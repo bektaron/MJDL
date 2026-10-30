@@ -26,6 +26,8 @@ button.play[aria-pressed="true"]{background:var(--fg);color:var(--bg)}
 .map{border-top:1px solid var(--line);padding-top:12px;font-size:13px;color:var(--muted);display:grid;gap:6px;margin-top:auto}
 .map b{color:var(--fg);font-weight:500}
 .map i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:8px;vertical-align:-1px}
+.sw button{font:inherit;font-size:11px;padding:2px 8px;border:1px solid var(--line);background:transparent;color:var(--muted);border-radius:999px;cursor:pointer}.sw button[aria-pressed="true"]{color:var(--fg);border-color:var(--fg)}
+.layers{font-family:var(--mono);font-size:11.5px;color:var(--muted);line-height:1.6;min-height:2.4em}.layers b{color:var(--fg);font-weight:500}
 .foot{font-family:var(--mono);font-size:10.5px;color:var(--muted);text-align:center}
 </style>
 </head>
@@ -33,11 +35,13 @@ button.play[aria-pressed="true"]{background:var(--fg);color:var(--bg)}
 <div class="card">
   <div><h1>FR-002 · Listen</h1><p class="sub">Second frame: a three-way undecidable (stone | cloth | sand) and a deep one — the longest sustain.</p></div>
   <img src="frame-4c1a91ed.jpg" alt="FR-002 · Listen">
-  <div class="transport"><button class="play" id="play" aria-label="play">▶</button><div><div class="now" id="now"></div><div class="meta">passage · <span id="total"></span> · tap ▶ to listen, tap again to stop</div></div></div>
+  <div class="transport"><button class="play" id="play" aria-label="play">▶</button><div><div class="now" id="now"></div><div class="meta"><span class="sw" role="group" aria-label="form"><button data-m="layers" aria-pressed="true">layers</button><button data-m="line" aria-pressed="false">line</button></span> · <span id="total"></span></div></div></div>
+  <div class="layers" id="layers"></div>
   <div class="map">
     <div><i style="background:var(--F)"></i><b>F phenomenon</b> short, plucked — what the prompt named</div>
     <div><i style="background:var(--S)"></i><b>S sensory</b> breathy · <i style="background:var(--E);margin-left:6px"></i><b>E emotional</b> bowed · <i style="background:var(--K);margin-left:6px"></i><b>K intellectual</b> thin, long</div>
     <div><b>Wavering pitch</b> = an uncertain word. <b>Steady</b> = a certain one.</div>
+    <div><b>Layers:</b> the substance holds the ground as a pedal · textures and motions beat the pulse (uncertain ones stumble) · what was read sings in front · the undecided grinds against the ground.</div>
     <div><b>Two notes a fifth apart</b> = two things side by side. <b>A semitone that never resolves</b> = the eye cannot decide what it sees.</div>
   </div>
   <div class="foot">MJDL · nodular composition · mapping v0.1 · FR-002</div>
@@ -81,6 +85,36 @@ function voice(part,freq,amb,t0,dur,gainMul){ensure();const g=ctx.createGain();g
 const all={F,S,E,K};const byLabel={};
 Object.entries(all).forEach(([p,list])=>{list.forEach(n=>{n.p=p;n.f=pitchFor(n,p);byLabel[n.l.replace(' ?','')]=n;n.el=null;});});
 function flash(el,d){if(!el)return;el.classList.add('on');setTimeout(()=>el.classList.remove('on'),d*1000);}
+// ---- layered form (v0.2): BG pedal · rhythm · FG line · tension ----
+let FORM='layers';const L_LEN=34;
+function drone(freq,amb,t0,dur,gain){ensure();const g=ctx.createGain();g.connect(master);g.gain.setValueAtTime(0,t0);g.gain.linearRampToValueAtTime(gain,t0+3.5);g.gain.setValueAtTime(gain,t0+dur-5);g.gain.linearRampToValueAtTime(0,t0+dur);
+  [[1,'triangle'],[0.5,'sine'],[1.5,'sine']].forEach(([m,type],i)=>{const o=ctx.createOscillator();o.type=type;o.frequency.value=freq*m;const f=ctx.createBiquadFilter();f.type='lowpass';f.frequency.value=freq*2.2;const og=ctx.createGain();og.gain.value=i===2?0.25:1;
+    const lfo=ctx.createOscillator();lfo.frequency.value=0.12+amb/250;const lg=ctx.createGain();lg.gain.value=freq*m*(amb/100)*0.03;lfo.connect(lg);lg.connect(o.frequency);
+    o.connect(f);f.connect(og);og.connect(g);lfo.start(t0);o.start(t0);o.stop(t0+dur+0.1);lfo.stop(t0+dur+0.1);});}
+function pulse(freq,t,dur,gain){const g=ctx.createGain();g.connect(master);const o=ctx.createOscillator();o.type='triangle';o.frequency.setValueAtTime(freq*1.5,t);o.frequency.exponentialRampToValueAtTime(freq,t+dur*0.4);o.connect(g);
+  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(gain,t+0.004);g.gain.exponentialRampToValueAtTime(0.001,t+dur);o.start(t);o.stop(t+dur+0.05);}
+function planLayers(){const L=L_LEN;const ev=[];
+  const subs=F.filter(n=>n.g==='SUB').sort((a,b)=>a.s-b.s).slice(0,2);const bg=subs.length?subs:[F[0]]; // ground = the two most certain substances
+  bg.forEach((n,i)=>ev.push({kind:'bg',n,t:i*2,dur:L-i*2}));
+  const rh=F.filter(n=>n.g==='TEX'||n.g==='MOT');
+  rh.forEach((n,i)=>{const period=n.g==='TEX'?0.5:0.75;const start=5+i*2.5;let seed=Math.abs(hash(n.l));const times=[];
+    for(let t=start;t<L-3;t+=period){seed=(seed*1103515245+12345)&0x7fffffff;const j=((seed/0x7fffffff)-0.5)*period*(n.s/100)*1.6;times.push(t+j);}
+    ev.push({kind:'rh',n,times,t:start});});
+  const fg=[];READING.tags.forEach(tag=>{const n=byLabel[tag];if(n)fg.push({kind:n.p,n,txt:tag+'  (tag)',dur:3.4});});
+  READING.amp.forEach(([a,b])=>fg.push({kind:'amp',a:byLabel[a],b:byLabel[b],txt:`${a} <span class="amp">&amp;</span> ${b}`,dur:3.8}));
+  const fgStart=8,fgEnd=L-9,step=(fgEnd-fgStart)/Math.max(fg.length,1);fg.forEach((e,i)=>{e.t=fgStart+i*step;ev.push(e);});
+  READING.bar.forEach(([a,b,car,c],i)=>{const depth=(car.match(/\|/g)||[]).length+(c?2:1);const t=L-10+i*2.6;ev.push({t,dur:Math.max(4,L-1-t)+depth*0.8,kind:'bar',a:byLabel[a],b:byLabel[b],c:c?byLabel[c]:null,three:!!c,depth,txt:`${a}<span class="op">|</span>${b}${c?'<span class="op">|</span>'+c:''} <span style="color:var(--muted)">${car}</span>`});});
+  return {ev,len:L+2.5,bg,rh};}
+function playLayers(){ensure();if(ctx.state==='suspended')ctx.resume();stopAll();const {ev,len,bg,rh}=planLayers();const t0=ctx.currentTime+0.1;const now=document.getElementById('now');
+  document.getElementById('layers').innerHTML=`<b>ground</b> ${bg.map(n=>n.l).join(' · ')}<br><b>pulse</b> ${rh.map(n=>n.l).join(' · ')}`;
+  ev.forEach(e=>{if(e.kind==='bg'){drone(e.n.f*0.5,e.n.s,t0+e.t,e.dur,0.16);}
+    else if(e.kind==='rh'){e.times.forEach(tt=>pulse(e.n.f*0.5,t0+tt,0.09,0.22));}
+    else if(e.kind==='amp'){const fa=(e.a?e.a.f:ROOT*2);voice(e.a?e.a.p:'S',fa,e.a?e.a.s:40,t0+e.t,e.dur,0.8);voice(e.b?e.b.p:'S',fa*1.5,e.b?e.b.s:40,t0+e.t+0.02,e.dur,0.8);}
+    else if(e.kind==='bar'){const fa=(e.a?e.a.f:ROOT*1.5);voice(e.a?e.a.p:'F',fa,e.a?e.a.s:60,t0+e.t,e.dur,0.7);voice(e.b?e.b.p:'F',fa*Math.pow(2,1/12),e.b?e.b.s:60,t0+e.t+0.03,e.dur,0.7);if(e.three)voice('F',fa*Math.pow(2,2/12),70,t0+e.t+0.06,e.dur,0.6);}
+    else{voice(e.kind,e.n.f,e.n.s,t0+e.t,e.dur,1);}
+    if(e.txt)timers.push(setTimeout(()=>{now.innerHTML=e.txt;now.className='now '+(e.kind==='bar'?'bar':e.kind==='amp'?'amp':e.kind);},e.t*1000+100));});
+  const pb=document.getElementById('play');pb.setAttribute('aria-pressed','true');pb.textContent='■';now.textContent='…';
+  timers.push(setTimeout(stopAll,len*1000+200));}
 // ---- passage ----
 const total=document.getElementById('total');
 function nodeDur(){return 0.5;}
@@ -101,8 +135,10 @@ function playPassage(){ensure();if(ctx.state==='suspended')ctx.resume();stopAll(
   timers.push(setTimeout(stopAll,len*1000+200));}
 function stopAll(){timers.forEach(clearTimeout);timers=[];const pb=document.getElementById('play');pb.setAttribute('aria-pressed','false');pb.textContent='▶';document.getElementById('now').textContent='';document.getElementById('now').className='now';
   if(ctx){master.gain.cancelScheduledValues(ctx.currentTime);master.gain.setValueAtTime(master.gain.value,ctx.currentTime);master.gain.linearRampToValueAtTime(0.0001,ctx.currentTime+0.15);setTimeout(()=>{if(ctx){master.gain.setValueAtTime(0.5,ctx.currentTime);}},200);}}
-document.getElementById('play').addEventListener('click',()=>{if(document.getElementById('play').getAttribute('aria-pressed')==='true')stopAll();else playPassage();});
-renderTl();
+document.getElementById('play').addEventListener('click',()=>{if(document.getElementById('play').getAttribute('aria-pressed')==='true')stopAll();else (FORM==='layers'?playLayers():playPassage());});
+function showTotal(){if(FORM==='layers'){total.textContent=`${Math.round(L_LEN+2.5)} s`;}else renderTl();}
+document.querySelectorAll('.sw button').forEach(b=>b.addEventListener('click',()=>{stopAll();FORM=b.dataset.m;document.querySelectorAll('.sw button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));document.getElementById('layers').innerHTML='';showTotal();}));
+showTotal();
 })();
 </script>
 </body>
