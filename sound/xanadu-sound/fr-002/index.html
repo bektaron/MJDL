@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>FR-002 · Listen</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&family=Fraunces:opsz,wght@9..144,600&display=swap">
+<style>
+/* Layout: a listening card for a phone held in one hand — the frame, one big play button, the line being heard, four lines of mapping. */
+:root{--bg:#111416;--panel:#1A1F21;--fg:#E7EAE5;--muted:#9AA5A0;--line:#2E3638;--F:#6CC2BB;--S:#9CCB7E;--E:#E59A76;--K:#A3A8F0;--amb:#D9A440;
+  --display:"Fraunces",Georgia,serif;--body:"IBM Plex Sans",system-ui,sans-serif;--mono:"IBM Plex Mono",ui-monospace,monospace;color-scheme:dark}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.45;display:flex;flex-direction:column;align-items:center;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:18px 28px;box-sizing:border-box}
+.card{width:100%;max-width:440px;display:flex;flex-direction:column;gap:16px;flex:1}
+h1{font-family:var(--display);font-weight:600;font-size:22px;margin:0;line-height:1.15}
+.sub{color:var(--muted);font-size:13px;margin:2px 0 0}
+img{width:100%;height:auto;border-radius:12px;display:block}
+.transport{display:flex;align-items:center;gap:16px}
+button.play{width:72px;height:72px;border-radius:50%;border:1.5px solid var(--line);background:var(--panel);color:var(--fg);font-size:26px;cursor:pointer;flex:none;box-shadow:0 4px 14px rgba(0,0,0,.4)}
+button.play[aria-pressed="true"]{background:var(--fg);color:var(--bg)}
+.meta{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.now{min-height:1.6em;font-family:var(--mono);font-size:15px;color:var(--fg)}
+.now .op{color:var(--amb);font-weight:600} .now .amp{color:var(--S);font-weight:600}
+.now.F{color:var(--F)} .now.S{color:var(--S)} .now.E{color:var(--E)} .now.K{color:var(--K)} .now.bar{color:var(--amb)}
+.map{border-top:1px solid var(--line);padding-top:12px;font-size:13px;color:var(--muted);display:grid;gap:6px;margin-top:auto}
+.map b{color:var(--fg);font-weight:500}
+.map i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:8px;vertical-align:-1px}
+.foot{font-family:var(--mono);font-size:10.5px;color:var(--muted);text-align:center}
+</style>
+</head>
+<body>
+<div class="card">
+  <div><h1>FR-002 · Listen</h1><p class="sub">Second frame: a three-way undecidable (stone | cloth | sand) and a deep one — the longest sustain.</p></div>
+  <img src="frame-4c1a91ed.jpg" alt="FR-002 · Listen">
+  <div class="transport"><button class="play" id="play" aria-label="play">▶</button><div><div class="now" id="now"></div><div class="meta">passage · <span id="total"></span> · tap ▶ to listen, tap again to stop</div></div></div>
+  <div class="map">
+    <div><i style="background:var(--F)"></i><b>F phenomenon</b> short, plucked — what the prompt named</div>
+    <div><i style="background:var(--S)"></i><b>S sensory</b> breathy · <i style="background:var(--E);margin-left:6px"></i><b>E emotional</b> bowed · <i style="background:var(--K);margin-left:6px"></i><b>K intellectual</b> thin, long</div>
+    <div><b>Wavering pitch</b> = an uncertain word. <b>Steady</b> = a certain one.</div>
+    <div><b>Two notes a fifth apart</b> = two things side by side. <b>A semitone that never resolves</b> = the eye cannot decide what it sees.</div>
+  </div>
+  <div class="foot">MJDL · nodular composition · mapping v0.1 · FR-002</div>
+</div>
+<script>
+(function(){
+// ---- FR-001 cloud (the mockup's nodes for this frame) ----
+const F=[{l:'rock fold',g:'SUB',s:30},{l:'petrified linen',g:'SUB',s:24},{l:'wet sand ?',g:'SUB',s:60},{l:'water surface',g:'SUB',s:55},{l:'mass meets water',g:'COM',s:18},{l:'diagonal divide',g:'COM',s:16},{l:'diffuse, no shadow',g:'LIG',s:22},{l:'ridge relief',g:'TEX',s:22},{l:'lamination lines',g:'TEX',s:24},{l:'fine ripples',g:'TEX',s:26},{l:'veil / pour',g:'MOT',s:34},{l:'flow lines',g:'MOT',s:28}];
+const S=[{l:'soft',s:45},{l:'hard',s:45},{l:'coolness',s:62},{l:'fluid',s:42},{l:'taut',s:62}];
+const E=[{l:'restraint',s:58},{l:'fluidity',s:56},{l:'pull / undertow',s:66}];
+const K=[{l:'solidification',s:50},{l:'dissolution of the boundary',s:66},{l:'trace',s:58},{l:'separation',s:60}];
+// reading of FR-001 (Claude's example reading; Bekir's would replace it)
+const READING={tags:['solidification','dissolution of the boundary','fluidity','coolness'],amp:[['textured','smooth'],['solid','liquid']],bar:[['sharp','dissolving','@line'],['stone','cloth','@surface','sand'],['pour','reflection','@region|light','veil']]};
+// ---- pitch model: a just scale on D; register by partition/gene ----
+const ROOT=146.83; // D3
+const JUST=[1,9/8,5/4,4/3,3/2,5/3,15/8]; // major just scale
+const REG={SUB:0,MED:1,ENV:1,COM:1,LIG:2,COL:2,TEX:3,MOT:3,S:1,E:1,K:2};
+function pitchFor(n,part){const r=REG[n.g||part]||0;const idx=Math.abs(hash(n.l))%JUST.length;const oct=part==='K'?2:part==='F'?r*0.5:0.5;return ROOT*JUST[idx]*Math.pow(2,oct);}
+function hash(s){let h=0;for(const c of s)h=(h*31+c.charCodeAt(0))|0;return h;}
+// ---- audio ----
+let ctx,master,verb;const nodesPlaying=new Set();
+function ensure(){if(ctx)return;ctx=new (window.AudioContext||window.webkitAudioContext)();master=ctx.createGain();master.gain.value=0.5;
+  // small synthetic room
+  verb=ctx.createConvolver();const len=ctx.sampleRate*1.6,buf=ctx.createBuffer(2,len,ctx.sampleRate);for(let c=0;c<2;c++){const d=buf.getChannelData(c);for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/len,2.4)*0.5;}verb.buffer=buf;
+  const dry=ctx.createGain();dry.gain.value=0.75;const wet=ctx.createGain();wet.gain.value=0.3;master.connect(dry);master.connect(verb);verb.connect(wet);dry.connect(ctx.destination);wet.connect(ctx.destination);}
+// one node → one voice; partition picks the timbre; ambiguity picks pitch wander
+function voice(part,freq,amb,t0,dur,gainMul){ensure();const g=ctx.createGain();g.gain.value=0;g.connect(master);
+  const wander=(amb/100)*0.06; // up to ~6% pitch excursion
+  const lfo=ctx.createOscillator();lfo.frequency.value=0.8+amb/40;const lg=ctx.createGain();lg.gain.value=freq*wander;lfo.connect(lg);
+  let osc,filt;
+  if(part==='F'){osc=ctx.createOscillator();osc.type='triangle';filt=ctx.createBiquadFilter();filt.type='lowpass';filt.frequency.setValueAtTime(freq*6,t0);filt.frequency.exponentialRampToValueAtTime(freq*1.5,t0+dur*0.6);osc.connect(filt);filt.connect(g);
+    g.gain.setValueAtTime(0,t0);g.gain.linearRampToValueAtTime(0.5*gainMul,t0+0.01);g.gain.exponentialRampToValueAtTime(0.001,t0+dur);}
+  else if(part==='S'){osc=ctx.createOscillator();osc.type='sine';const noise=ctx.createBufferSource();const nb=ctx.createBuffer(1,ctx.sampleRate*dur,ctx.sampleRate);const d=nb.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;noise.buffer=nb;const nf=ctx.createBiquadFilter();nf.type='bandpass';nf.frequency.value=freq*2;nf.Q.value=6;const ng=ctx.createGain();ng.gain.value=0.25;noise.connect(nf);nf.connect(ng);ng.connect(g);noise.start(t0);noise.stop(t0+dur);osc.connect(g);
+    g.gain.setValueAtTime(0,t0);g.gain.linearRampToValueAtTime(0.35*gainMul,t0+dur*0.3);g.gain.linearRampToValueAtTime(0,t0+dur);}
+  else if(part==='E'){osc=ctx.createOscillator();osc.type='sawtooth';filt=ctx.createBiquadFilter();filt.type='lowpass';filt.frequency.value=freq*3;filt.Q.value=2;osc.connect(filt);filt.connect(g);
+    g.gain.setValueAtTime(0,t0);g.gain.linearRampToValueAtTime(0.3*gainMul,t0+dur*0.45);g.gain.linearRampToValueAtTime(0,t0+dur);}
+  else{osc=ctx.createOscillator();osc.type='sine';const o2=ctx.createOscillator();o2.type='sine';o2.frequency.value=freq*3.01;const g2=ctx.createGain();g2.gain.value=0.12;o2.connect(g2);g2.connect(g);o2.start(t0);o2.stop(t0+dur+0.1);osc.connect(g);
+    g.gain.setValueAtTime(0,t0);g.gain.linearRampToValueAtTime(0.3*gainMul,t0+dur*0.2);g.gain.setValueAtTime(0.3*gainMul,t0+dur*0.7);g.gain.linearRampToValueAtTime(0,t0+dur);}
+  osc.frequency.value=freq;lg.connect(osc.frequency);lfo.start(t0);lfo.stop(t0+dur+0.1);osc.start(t0);osc.stop(t0+dur+0.1);}
+// ---- UI: capsules ----
+const all={F,S,E,K};const byLabel={};
+Object.entries(all).forEach(([p,list])=>{list.forEach(n=>{n.p=p;n.f=pitchFor(n,p);byLabel[n.l.replace(' ?','')]=n;n.el=null;});});
+function flash(el,d){if(!el)return;el.classList.add('on');setTimeout(()=>el.classList.remove('on'),d*1000);}
+// ---- passage ----
+const total=document.getElementById('total');
+function nodeDur(){return 0.5;}
+function plan(){const d=nodeDur();const ev=[];let t=0;
+  F.forEach(n=>{ev.push({t,dur:d*1.3,kind:'F',n,txt:n.l});t+=d;});t+=d*0.5;
+  READING.tags.forEach(tag=>{const n=byLabel[tag];if(n){ev.push({t,dur:d*2.2,kind:n.p,n,txt:tag+'  (tag)'});t+=d*1.4;}});
+  READING.amp.forEach(([a,b])=>{const na=byLabel[a],nb=byLabel[b];ev.push({t,dur:d*2.4,kind:'amp',a:na,b:nb,txt:`${a} <span class="amp">&amp;</span> ${b}`});t+=d*2;});t+=d*0.5;
+  READING.bar.forEach(([a,b,car,c])=>{const depth=(car.match(/\|/g)||[]).length+(c?2:1);ev.push({t,dur:d*3+depth*1.2,kind:'bar',a:byLabel[a],b:byLabel[b],c:c?byLabel[c]:null,three:!!c,depth,txt:`${a}<span class="op">|</span>${b}${c?'<span class="op">|</span>'+c:''} <span style="color:var(--muted)">${car}</span>`});t+=d*2.2;});
+  return {ev,len:t+d*3+2.4};}
+function renderTl(){const {ev,len}=plan();total.textContent=`${Math.round(len)} s`;const now=document.getElementById('now');ev.forEach(e=>{const w=document.createElement('span');w.innerHTML=e.txt;e.els=[w];e.now=now;});return {ev,len};}
+let timers=[];
+function playPassage(){ensure();if(ctx.state==='suspended')ctx.resume();stopAll();const {ev,len}=renderTl();const t0=ctx.currentTime+0.1;
+  ev.forEach(e=>{if(e.kind==='F'||e.kind==='S'||e.kind==='E'||e.kind==='K'){voice(e.kind,e.n.f,e.n.s,t0+e.t,e.dur,1);}
+    else if(e.kind==='amp'){const fa=(e.a?e.a.f:ROOT*2);voice(e.a?e.a.p:'S',fa,e.a?e.a.s:40,t0+e.t,e.dur,0.8);voice(e.b?e.b.p:'S',fa*1.5,e.b?e.b.s:40,t0+e.t+0.02,e.dur,0.8);}
+    else{const fa=(e.a?e.a.f:ROOT*1.5);voice(e.a?e.a.p:'F',fa,e.a?e.a.s:60,t0+e.t,e.dur,0.9);voice(e.b?e.b.p:'F',fa*Math.pow(2,1/12),e.b?e.b.s:60,t0+e.t+0.03,e.dur,0.9);if(e.three)voice('F',fa*Math.pow(2,2/12),70,t0+e.t+0.06,e.dur,0.8);}
+    timers.push(setTimeout(()=>{e.now.innerHTML=e.els[0].innerHTML;e.now.className='now '+(e.kind==='bar'?'bar':e.kind==='amp'?'amp':e.kind);},e.t*1000+100));});
+  document.getElementById('play').setAttribute('aria-pressed','true');document.getElementById('play').textContent='■';document.getElementById('now').textContent='…';
+  timers.push(setTimeout(stopAll,len*1000+200));}
+function stopAll(){timers.forEach(clearTimeout);timers=[];const pb=document.getElementById('play');pb.setAttribute('aria-pressed','false');pb.textContent='▶';document.getElementById('now').textContent='';document.getElementById('now').className='now';
+  if(ctx){master.gain.cancelScheduledValues(ctx.currentTime);master.gain.setValueAtTime(master.gain.value,ctx.currentTime);master.gain.linearRampToValueAtTime(0.0001,ctx.currentTime+0.15);setTimeout(()=>{if(ctx){master.gain.setValueAtTime(0.5,ctx.currentTime);}},200);}}
+document.getElementById('play').addEventListener('click',()=>{if(document.getElementById('play').getAttribute('aria-pressed')==='true')stopAll();else playPassage();});
+renderTl();
+})();
+</script>
+</body>
+</html>
