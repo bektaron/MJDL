@@ -35,12 +35,13 @@ button.play[aria-pressed="true"]{background:var(--fg);color:var(--bg)}
 <div class="card">
   <div><h1>FR-001 · Listen</h1><p class="sub">A frame read in the Perception Cloud, heard: what was named, what was seen, what could not be decided.</p></div>
   <img src="frame-e14a9911.jpg" alt="FR-001 · Listen">
-  <div class="transport"><button class="play" id="play" aria-label="play">▶</button><div><div class="now" id="now"></div><div class="meta"><span class="sw" role="group" aria-label="form"><button data-m="layers" aria-pressed="true">layers</button><button data-m="line" aria-pressed="false">line</button></span> · <span id="total"></span></div></div></div>
+  <div class="transport"><button class="play" id="play" aria-label="play">▶</button><div><div class="now" id="now"></div><div class="meta"><span class="sw" role="group" aria-label="form"><button data-m="soft" aria-pressed="true">soft</button><button data-m="layers" aria-pressed="false">layers</button><button data-m="line" aria-pressed="false">line</button></span> · <span id="total"></span></div></div></div>
   <div class="layers" id="layers"></div>
   <div class="map">
     <div><i style="background:var(--F)"></i><b>F phenomenon</b> short, plucked — what the prompt named</div>
     <div><i style="background:var(--S)"></i><b>S sensory</b> breathy · <i style="background:var(--E);margin-left:6px"></i><b>E emotional</b> bowed · <i style="background:var(--K);margin-left:6px"></i><b>K intellectual</b> thin, long</div>
     <div><b>Wavering pitch</b> = an uncertain word. <b>Steady</b> = a certain one.</div>
+    <div><b>Soft:</b> five notes only, no sharp intervals; the melody walks in small steps; the undecided a whole tone apart, held.</div>
     <div><b>Layers:</b> the substance holds the ground as a pedal · textures and motions beat the pulse (uncertain ones stumble) · what was read sings in front · the undecided grinds against the ground.</div>
     <div><b>Two notes a fifth apart</b> = two things side by side. <b>A semitone that never resolves</b> = the eye cannot decide what it sees.</div>
   </div>
@@ -86,7 +87,7 @@ const all={F,S,E,K};const byLabel={};
 Object.entries(all).forEach(([p,list])=>{list.forEach(n=>{n.p=p;n.f=pitchFor(n,p);byLabel[n.l.replace(' ?','')]=n;n.el=null;});});
 function flash(el,d){if(!el)return;el.classList.add('on');setTimeout(()=>el.classList.remove('on'),d*1000);}
 // ---- layered form (v0.2): BG pedal · rhythm · FG line · tension ----
-let FORM='layers';const L_LEN=34;
+let FORM='soft';const L_LEN=34;
 function drone(freq,amb,t0,dur,gain){ensure();const g=ctx.createGain();g.connect(master);g.gain.setValueAtTime(0,t0);g.gain.linearRampToValueAtTime(gain,t0+3.5);g.gain.setValueAtTime(gain,t0+dur-5);g.gain.linearRampToValueAtTime(0,t0+dur);
   [[1,'triangle'],[0.5,'sine'],[1.5,'sine']].forEach(([m,type],i)=>{const o=ctx.createOscillator();o.type=type;o.frequency.value=freq*m;const f=ctx.createBiquadFilter();f.type='lowpass';f.frequency.value=freq*2.2;const og=ctx.createGain();og.gain.value=i===2?0.25:1;
     const lfo=ctx.createOscillator();lfo.frequency.value=0.12+amb/250;const lg=ctx.createGain();lg.gain.value=freq*m*(amb/100)*0.03;lfo.connect(lg);lg.connect(o.frequency);
@@ -115,6 +116,37 @@ function playLayers(){ensure();if(ctx.state==='suspended')ctx.resume();stopAll()
     if(e.txt)timers.push(setTimeout(()=>{now.innerHTML=e.txt;now.className='now '+(e.kind==='bar'?'bar':e.kind==='amp'?'amp':e.kind);},e.t*1000+100));});
   const pb=document.getElementById('play');pb.setAttribute('aria-pressed','true');pb.textContent='■';now.textContent='…';
   timers.push(setTimeout(stopAll,len*1000+200));}
+// ---- soft form (v0.2b): pentatonic, stepwise melody, long tails, whole-tone tension ----
+const PENTA=[1,9/8,5/4,3/2,5/3];
+function softPitch(n){const idx=Math.abs(hash(n.l))%PENTA.length;const oct=n.p==='K'?2:(n.g==='SUB'?0:1);return ROOT*PENTA[idx]*Math.pow(2,oct);}
+function softVoice(freq,amb,t0,dur,gain,bright){ensure();const g=ctx.createGain();g.connect(master);
+  const o=ctx.createOscillator();o.type='sine';const o2=ctx.createOscillator();o2.type='triangle';o2.frequency.value=freq*2;const g2=ctx.createGain();g2.gain.value=(bright||0.08);
+  const f=ctx.createBiquadFilter();f.type='lowpass';f.frequency.value=freq*4;o.connect(f);o2.connect(g2);g2.connect(f);f.connect(g);
+  const lfo=ctx.createOscillator();lfo.frequency.value=0.5+amb/60;const lg=ctx.createGain();lg.gain.value=freq*(amb/100)*0.025;lfo.connect(lg);lg.connect(o.frequency);lg.connect(o2.frequency);
+  g.gain.setValueAtTime(0,t0);g.gain.linearRampToValueAtTime(gain,t0+0.12);g.gain.setTargetAtTime(0,t0+0.3,dur*0.45);
+  o.frequency.value=freq;[o,o2,lfo].forEach(x=>{x.start(t0);x.stop(t0+dur+2.5);});}
+function planSoft(){const ev=[];const pool=[];
+  F.forEach(n=>pool.push({kind:'F',n,txt:n.l}));
+  READING.tags.forEach(tag=>{const n=byLabel[tag];if(n)pool.push({kind:n.p,n,txt:tag+'  (tag)'});});
+  READING.amp.forEach(([a,b])=>{[a,b].forEach(x=>{const n=byLabel[x];if(n&&!pool.some(e=>e.n===n))pool.push({kind:n.p,n,txt:x});});});
+  pool.forEach(e=>e.f=softPitch(e.n));
+  // stepwise ordering: start from the lowest, always move to the nearest unused pitch; F before readings when tied
+  const rest=pool.slice();let cur=rest.reduce((m,e)=>e.f<m.f?e:m,rest[0]);const seq=[];
+  while(rest.length){rest.splice(rest.indexOf(cur),1);seq.push(cur);if(!rest.length)break;cur=rest.reduce((m,e)=>Math.abs(Math.log(e.f/cur.f))<Math.abs(Math.log(m.f/cur.f))?e:m,rest[0]);}
+  let t=2.5;const step=1.05;seq.forEach(e=>{e.t=t;e.dur=2.6;ev.push(e);t+=step;});
+  const tens=t+0.8;READING.bar.forEach(([a,b,car,c],i)=>{const depth=(car.match(/\|/g)||[]).length+(c?2:1);ev.push({t:tens+i*3.2,dur:7+depth,kind:'bar',a:byLabel[a],b:byLabel[b],c:c?byLabel[c]:null,three:!!c,depth,txt:`${a}<span class="op">|</span>${b}${c?'<span class="op">|</span>'+c:''} <span style="color:var(--muted)">${car}</span>`});});
+  const len=tens+READING.bar.length*3.2+9;return {ev,len};}
+function playSoft(){ensure();if(ctx.state==='suspended')ctx.resume();stopAll();const {ev,len}=planSoft();const t0=ctx.currentTime+0.1;const now=document.getElementById('now');
+  document.getElementById('layers').innerHTML=`<b>ground</b> D · pentatonic · <b>pulse</b> slow heartbeat`;
+  // ground: root and fifth, very soft, whole piece
+  drone(ROOT*0.5,10,t0,len,0.10);drone(ROOT*0.75,10,t0+4,len-4,0.05);
+  // heartbeat: root pluck every 1.6 s, slightly uneven by the ground's uncertainty
+  const subs=F.filter(n=>n.g==='SUB');const amb=subs.length?subs[0].s:30;let seed=7;for(let tt=1.6;tt<len-3;tt+=1.6){seed=(seed*1103515245+12345)&0x7fffffff;const j=((seed/0x7fffffff)-0.5)*0.35*(amb/100);softVoice(ROOT,0,t0+tt+j,0.9,0.14,0.02);}
+  ev.forEach(e=>{if(e.kind==='bar'){const fa=(e.a?softPitch(e.a):ROOT*1.5);softVoice(fa,e.a?e.a.s:60,t0+e.t,e.dur,0.22,0.05);softVoice(fa*9/8,e.b?e.b.s:60,t0+e.t+0.05,e.dur,0.22,0.05);if(e.three)softVoice(fa*4/3,70,t0+e.t+0.1,e.dur,0.18,0.05);}
+    else{softVoice(e.f,e.n.s,t0+e.t,e.dur,e.kind==='F'?0.26:0.3,e.kind==='K'?0.14:0.08);}
+    timers.push(setTimeout(()=>{now.innerHTML=e.txt;now.className='now '+(e.kind==='bar'?'bar':e.kind);},e.t*1000+100));});
+  const pb=document.getElementById('play');pb.setAttribute('aria-pressed','true');pb.textContent='■';now.textContent='…';
+  timers.push(setTimeout(stopAll,len*1000+200));}
 // ---- passage ----
 const total=document.getElementById('total');
 function nodeDur(){return 0.5;}
@@ -135,8 +167,8 @@ function playPassage(){ensure();if(ctx.state==='suspended')ctx.resume();stopAll(
   timers.push(setTimeout(stopAll,len*1000+200));}
 function stopAll(){timers.forEach(clearTimeout);timers=[];const pb=document.getElementById('play');pb.setAttribute('aria-pressed','false');pb.textContent='▶';document.getElementById('now').textContent='';document.getElementById('now').className='now';
   if(ctx){master.gain.cancelScheduledValues(ctx.currentTime);master.gain.setValueAtTime(master.gain.value,ctx.currentTime);master.gain.linearRampToValueAtTime(0.0001,ctx.currentTime+0.15);setTimeout(()=>{if(ctx){master.gain.setValueAtTime(0.5,ctx.currentTime);}},200);}}
-document.getElementById('play').addEventListener('click',()=>{if(document.getElementById('play').getAttribute('aria-pressed')==='true')stopAll();else (FORM==='layers'?playLayers():playPassage());});
-function showTotal(){if(FORM==='layers'){total.textContent=`${Math.round(L_LEN+2.5)} s`;}else renderTl();}
+document.getElementById('play').addEventListener('click',()=>{if(document.getElementById('play').getAttribute('aria-pressed')==='true')stopAll();else (FORM==='soft'?playSoft():FORM==='layers'?playLayers():playPassage());});
+function showTotal(){if(FORM==='soft'){total.textContent=`${Math.round(planSoft().len)} s`;}else if(FORM==='layers'){total.textContent=`${Math.round(L_LEN+2.5)} s`;}else renderTl();}
 document.querySelectorAll('.sw button').forEach(b=>b.addEventListener('click',()=>{stopAll();FORM=b.dataset.m;document.querySelectorAll('.sw button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));document.getElementById('layers').innerHTML='';showTotal();}));
 showTotal();
 })();
