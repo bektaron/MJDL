@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>FR-001 · Ear test</title>
+<style>
+:root{--bg:#111416;--fg:#E7EAE5;--muted:#9AA5A0;--line:#2E3638;--panel:#1A1F21;color-scheme:dark}
+html,body{margin:0;background:var(--bg);color:var(--fg)}
+body{font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:flex;justify-content:center;
+  padding:20px max(16px,env(safe-area-inset-right)) 28px max(16px,env(safe-area-inset-left));box-sizing:border-box;min-height:100vh}
+main{width:100%;max-width:440px;display:flex;flex-direction:column;gap:18px}
+h1{font-size:18px;font-weight:600;margin:0}
+#go{width:100%;min-height:96px;border-radius:18px;border:1.5px solid var(--line);background:var(--panel);color:var(--fg);font:inherit;font-size:30px;font-weight:600;cursor:pointer}
+#go[aria-pressed="true"]{background:var(--fg);color:var(--bg)}
+#len{margin:-8px 0 0;color:var(--muted);font-size:14px;text-align:center}
+#now{min-height:4.4em;white-space:pre-line;font:17px/1.45 ui-monospace,Menlo,Consolas,monospace}
+.grp{display:flex;flex-direction:column;gap:6px}
+.grp>span{font-size:12px;color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+.seg{display:flex;gap:8px}
+.seg button{flex:1;min-height:44px;font:inherit;font-size:15px;border:1px solid var(--line);background:transparent;color:var(--muted);border-radius:10px;cursor:pointer}
+.seg button[aria-pressed="true"]{color:var(--fg);border-color:var(--fg)}
+footer{margin-top:auto;padding-top:12px;font-size:11.5px;color:var(--muted);text-align:center}
+</style>
+</head>
+<body>
+<main>
+  <h1>FR-001 · Ear test</h1>
+  <button id="go" aria-pressed="false">Listen</button>
+  <p id="len"></p>
+  <div id="now" aria-live="off"></div>
+  <div class="grp"><span>density</span><div class="seg" role="group" aria-label="density">
+    <button data-k="dens" data-v="line">line</button><button data-k="dens" data-v="layers">layers</button><button data-k="dens" data-v="soft">soft</button></div></div>
+  <div class="grp"><span>| pair (undecided)</span><div class="seg" role="group" aria-label="bar pair">
+    <button data-k="bar" data-v="new">new · alternating</button><button data-k="bar" data-v="old">old · dyad</button></div></div>
+  <div class="grp"><span>ambiguity</span><div class="seg" role="group" aria-label="ambiguity">
+    <button data-k="amb" data-v="new">new · beating</button><button data-k="amb" data-v="old">old · wander</button></div></div>
+  <footer>Ear test · tintinnabuli draft · 31 Oct 2026 · rules v0.2-draft</footer>
+</main>
+<script>
+(function(){
+// ---- data: verbatim from the live FR-001 page (fr-001/index.html) ----
+const F=[{l:'wet sand ?',g:'SUB',s:60},{l:'water surface ?',g:'SUB',s:55},{l:'oblique aerial photo',g:'MED',s:20},{l:'diagonal divide',g:'COM',s:16},{l:'no horizon',g:'COM',s:14},{l:'diffuse, no shadow',g:'LIG',s:22},{l:'near-monochrome',g:'COL',s:20},{l:'slate black',g:'COL',s:18},{l:'lamination lines',g:'TEX',s:24},{l:'fine ripples',g:'TEX',s:26},{l:'flow lines',g:'MOT',s:28},{l:'ridge curve',g:'MOT',s:30}];
+const S=[{l:'soft',s:45},{l:'hard',s:45},{l:'coolness',s:62}];
+const E=[{l:'restraint',s:58},{l:'fluidity',s:56},{l:'pull / undertow',s:66}];
+const K=[{l:'separation',s:60},{l:'trace',s:58},{l:'solidification',s:50},{l:'surface / depth',s:52}];
+// reading of FR-001 (Claude's example reading; Bekir's would replace it)
+const READING={tags:['separation','trace'],amp:[['soft','hard'],['black','white']],bar:[['black','white','@line'],['sand','water','@surface|plane']]};
+// ---- RULES · 2026-10-31 · v0.2-draft · from XANADU-SOUND-project.md §11.3 + App. A §6 · to become rules.json after the ear test ----
+const RULES={
+  version:"0.2-draft",
+  root:146.83,                                    // D3
+  scale:[1,9/8,5/4,4/3,3/2,5/3,15/8],             // 5-limit JI: D E F# G A B C#
+  triad:[0,2,4],                                  // D F# A (scale degrees); T = nearest triad tone BELOW M (close, inferior)
+  clash:[1,5],                                    // E and B never together (JI grave fifth 40/27); the later one waits `step`
+  step:0.3,
+  reg:{SUB:0,MED:1,ENV:1,COM:1,LIG:2,COL:2,TEX:3,MOT:3,S:1,E:1,F:1,K:4}, // octaves above D3, as live page but x2 so bands are >= 1 octave apart; K highest; F:1 only for poles without a gene
+  stepwise:true,                                  // within a phase: start lowest, walk to nearest unused M (as live "soft")
+  value:{min:0.4,max:1.6,def:0.5},                // value 0-1 -> seconds. def: the data has no value field (brief §5.3: all 0.5 today)
+  level:0.30, tGain:0.8,                          // fixed loudness; T voice slightly under M
+  pedal:0.035,                                    // D2 + A2, per oscillator
+  timbre:{                                        // E uses S
+    F:{wave:'sine',    pan:0,   gain:1.0, partial:[3,0.22]},
+    S:{wave:'triangle',pan:-0.6,gain:0.9, lp:2.2,q:0.7,att:0.45,rel:0.35,noise:0.3},
+    K:{wave:'square',  pan:0.6, gain:0.55,lp:2.4,q:3,hp:0.8,att:0.2,rel:0.3}},
+  amb:{base:0.5,span:5,glideAt:70,glideSemi:1,wander:0.06}, // new: beat Hz = base + amb/100*span; glide if amb >= glideAt. old: +-amb/100*wander
+  amp:{hold:1.5},                                 // & chord: M + T below + T above, held value-duration x hold
+  bar:{beat:0.6,minSpan:6,maxSpan:8,oldSemi:Math.pow(2,1/12),oldWhole:9/8}, // span = 6 s + 2 s per extra carrier depth
+  flagSustain:2,                                  // ⟡: T held x2 (no node carries the flag in FR-001)
+  fb:{amp:{part:'S',amb:40},bar:{part:'F',amb:60}}, // poles that are not cloud nodes: live page's fallbacks
+  gap:0.08, phaseGap:0.4, pairGap:0.3, tail:0.6,
+  dens:{                                          // lanes = max melodic lines at once; pedal does not count
+    line:{lanes:1,pedal:false},
+    layers:{lanes:3,pedal:true,seAt:8,kAt:12,pairAt:16,stagger:3,seAll:true}, // seAll: no S/E tag in READING, so layers plays all 6 S/E cloud nodes
+    soft:{lanes:1,pedal:true}}
+};
+const OPT={dens:'line',bar:'new',amb:'new'};
+// ---- names -> pitch class (same hash as the live page) ----
+const hash=s=>{let h=0;for(const c of s)h=(h*31+c.charCodeAt(0))|0;return h;};
+const R=RULES,deg=l=>Math.abs(hash(l))%7;
+const byLabel={};Object.entries({F,S,E,K}).forEach(([p,list])=>list.forEach(n=>{n.p=p;byLabel[n.l.replace(' ?','')]=n;}));
+const nodeFor=(l,fb)=>byLabel[l]||{l,p:fb.part,s:fb.amb};
+const mIdx=n=>deg(n.l)+7*R.reg[n.g||n.p];              // diatonic index = degree + 7 * octave
+const fr=i=>R.root*R.scale[((i%7)+7)%7]*Math.pow(2,Math.floor(i/7));
+const tri=i=>R.triad.includes(((i%7)+7)%7);
+const tBelow=i=>{do{i--;}while(!tri(i));return i;};    // M on a triad tone -> next triad tone below
+const tAbove=i=>{do{i++;}while(!tri(i));return i;};
+const walk=a=>{if(!R.stepwise||a.length<2)return a;const rest=a.slice(),out=[];let cur=rest.reduce((m,n)=>mIdx(n)<mIdx(m)?n:m);
+  for(;;){rest.splice(rest.indexOf(cur),1);out.push(cur);if(!rest.length)return out;const c=cur;cur=rest.reduce((m,n)=>Math.abs(mIdx(n)-mIdx(c))<Math.abs(mIdx(m)-mIdx(c))?n:m);}};
+// ---- plan: pure, no audio. N = notes, M = display marks ----
+function plan(st){
+  const D=R.dens[st.dens],multi=D.lanes>1,lane=Array(D.lanes).fill(0),snd=[],N=[],M=[];let eid=0;
+  const vd=n=>R.value.min+(n.v===undefined?R.value.def:n.v)*(R.value.max-R.value.min);
+  const nt=(t,d,f,n,role,e,L)=>({t,d,f,part:n.p,role,amb:n.s,e,L});
+  const clash=(pcs,a,b)=>snd.some(s=>s.a<b&&a<s.b&&R.clash.some(x=>pcs.has(x)&&R.clash.some(y=>y!==x&&s.pcs.has(y))));
+  function put(L,early,span,pcs,mk){let t=Math.max(early,lane[L]);while(clash(pcs,t,t+span))t+=R.step;   // E+B -> delay by one step
+    mk(t,++eid);lane[L]=t+span+R.gap;snd.push({a:t,b:t+span,pcs});return t;}
+  const freeLane=()=>lane.indexOf(Math.min(...lane));
+  const nodeEv=(n,L,early)=>{const d=vd(n),i=mIdx(n),td=d*(n.flag?R.flagSustain:1);
+    put(L,early,Math.max(d,td),new Set([deg(n.l)]),(t,e)=>{M.push({t,d,L,part:n.p,txt:n.l});
+      if(n.sign<0)return;                                   // contribution - : rest of the same duration (no node carries a sign)
+      N.push(nt(t,d,fr(i),n,'M',e,L),nt(t,td,fr(tBelow(i)),n,'T',e,L));});};
+  const phase=(list,L,early)=>{if(!multi&&list.length&&lane[0])lane[0]+=R.phaseGap;list.forEach(n=>nodeEv(n,L,early));};
+  const tags=READING.tags.map(l=>byLabel[l]).filter(Boolean);
+  let se=tags.filter(n=>n.p!=='K');if(multi&&D.seAll&&!se.length)se=[...S,...E];
+  phase(walk(F),0,0);                                       // 1. F nodes
+  phase(walk(se),1%D.lanes,multi?D.seAt:0);                 // 2. S/E tags (layers: from seAt)
+  phase(walk(tags.filter(n=>n.p==='K')),2%D.lanes,multi?D.kAt:0); // 3. K tags
+  if(!multi)lane[0]+=R.phaseGap;
+  let pe=multi?D.pairAt:0;                                  // 4. pair readings
+  READING.amp.forEach(([a,b])=>{const L=freeLane();let t0;
+    [a,b].forEach((x,k)=>{const n=nodeFor(x,R.fb.amp),d=vd(n)*R.amp.hold,i=mIdx(n);
+      const t=put(L,k?0:pe,d,new Set([deg(n.l)]),(t,e)=>{M.push({t,d,L,part:n.p,txt:(k?'& ':'')+n.l});     // & : M + T below + T above, fusing
+        N.push(nt(t,d,fr(i),n,'M',e,L),nt(t,d,fr(tBelow(i)),n,'T',e,L),nt(t,d,fr(tAbove(i)),n,'T',e,L));});
+      if(!k)t0=t;});
+    if(multi)pe=Math.max(pe,t0+D.stagger);lane[L]+=R.pairGap;});
+  READING.bar.forEach(([a,b,car])=>{const L=freeLane(),na=nodeFor(a,R.fb.bar),nb=nodeFor(b,R.fb.bar),B=R.bar;
+    const depth=(car.match(/\|/g)||[]).length+1,span=Math.min(B.maxSpan,B.minSpan+(depth-1)*2),isNew=st.bar==='new';
+    const t0=put(L,pe,span,new Set(isNew?[deg(na.l),deg(nb.l)]:[deg(na.l)]),(t,e)=>{
+      M.push({t,d:span,L,part:na.p,txt:`${a} | ${b}  ${car}`});
+      if(isNew){const nb_=Math.floor(span/B.beat);                           // | new: T alternates below/above M each beat, never settles
+        for(let k=0;k<nb_;k++){const n=k<nb_/2?na:nb,i=mIdx(n),tt=t+k*B.beat;
+          N.push(nt(tt,B.beat*0.92,fr(i),n,'M',e,L),nt(tt,B.beat*0.92,fr(k%2?tAbove(i):tBelow(i)),n,'T',e,L));}}
+      else{const i=mIdx(na);N.push(nt(t,span,fr(i),na,'M',e,L),nt(t,span,fr(i)*(st.dens==='soft'?B.oldWhole:B.oldSemi),na,'T',e,L));}}); // | old: held semitone (line/layers) or whole tone (soft), as live page
+    if(multi)pe=Math.max(pe,t0+D.stagger);lane[L]+=R.pairGap;});
+  M.sort((x,y)=>x.t-y.t);
+  return {N,M,lanes:D.lanes,pedal:D.pedal,len:Math.max(...N.map(n=>n.t+n.d))+R.tail};}
+// ---- audio: one AudioContext, created/resumed in the tap ----
+let ctx,master,noise,run=null,raf=0;
+function init(){ctx=new (window.AudioContext||window.webkitAudioContext)();master=ctx.createGain();master.gain.value=0.8;
+  const cmp=ctx.createDynamicsCompressor();master.connect(cmp);cmp.connect(ctx.destination);
+  noise=ctx.createBuffer(1,ctx.sampleRate,ctx.sampleRate);const d=noise.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;
+  const u=ctx.createBufferSource();u.buffer=ctx.createBuffer(1,1,22050);u.connect(ctx.destination);u.start(0);}   // iOS unlock
+function voice(n){const T=R.timbre[n.part==='E'?'S':n.part],t=run.t0+n.t,d=n.d,f=n.f,A=R.amb,mel=n.role==='M',amb=mel?n.amb:0,peak=R.level*T.gain*(n.role==='T'?R.tGain:1);
+  const pan=ctx.createStereoPanner();pan.pan.value=T.pan;pan.connect(run.bus);
+  const out=ctx.createGain(),g=out.gain;out.connect(pan);let head=out;
+  if(T.hp){const h=ctx.createBiquadFilter();h.type='highpass';h.frequency.value=f*T.hp;h.connect(head);head=h;}
+  if(T.lp){const l=ctx.createBiquadFilter();l.type='lowpass';l.frequency.value=f*T.lp;l.Q.value=T.q;l.connect(head);head=l;}
+  const fs=[f];let glide=false;
+  if(amb>0&&OPT.amb==='new'){fs.push(f+A.base+amb/100*A.span);glide=amb>=A.glideAt;}      // second oscillator -> beating
+  fs.forEach(fq=>{const o=ctx.createOscillator(),og=ctx.createGain();o.type=T.wave;og.gain.value=1/fs.length;o.connect(og);og.connect(head);
+    if(glide){o.frequency.setValueAtTime(fq*Math.pow(2,-A.glideSemi/12),t);o.frequency.exponentialRampToValueAtTime(fq,t+Math.min(0.3,d*0.4));}else o.frequency.value=fq;
+    if(amb>0&&OPT.amb==='old'){const l=ctx.createOscillator(),lg=ctx.createGain();l.frequency.value=0.8+amb/40;lg.gain.value=fq*amb/100*A.wander;l.connect(lg);lg.connect(o.frequency);l.start(t);l.stop(t+d+0.05);run.src.push(l);}
+    o.start(t);o.stop(t+d+0.05);run.src.push(o);});
+  if(T.partial){const p=ctx.createOscillator(),pg=ctx.createGain();p.frequency.value=f*T.partial[0];p.connect(pg);pg.connect(head);   // pluck transient
+    pg.gain.setValueAtTime(T.partial[1],t);pg.gain.exponentialRampToValueAtTime(0.0005,t+0.15);p.start(t);p.stop(t+0.2);run.src.push(p);}
+  if(T.noise){const s=ctx.createBufferSource(),bp=ctx.createBiquadFilter(),ng=ctx.createGain();s.buffer=noise;s.loop=true;bp.type='bandpass';bp.frequency.value=f*2;bp.Q.value=6;ng.gain.value=T.noise;   // breath
+    s.connect(bp);bp.connect(ng);ng.connect(out);s.start(t);s.stop(t+d+0.05);run.src.push(s);}
+  if(n.part==='F'){g.setValueAtTime(0.0001,t);g.linearRampToValueAtTime(peak,t+0.006);g.exponentialRampToValueAtTime(peak*0.03,t+Math.min(d*0.5,0.6));g.exponentialRampToValueAtTime(0.0001,t+d);}
+  else{g.setValueAtTime(0,t);g.linearRampToValueAtTime(peak,t+d*T.att);g.setValueAtTime(peak,t+d*(1-T.rel));g.linearRampToValueAtTime(0,t+d);}}
+function pedal(P){[R.root/2,R.root*0.75].forEach(f=>{const o=ctx.createOscillator(),l=ctx.createBiquadFilter(),g=ctx.createGain(),t=run.t0;
+  o.type='triangle';o.frequency.value=f;l.type='lowpass';l.frequency.value=f*4;o.connect(l);l.connect(g);g.connect(run.bus);
+  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(R.pedal,t+2);g.gain.setValueAtTime(R.pedal,t+P.len-2.5);g.gain.linearRampToValueAtTime(0,t+P.len);
+  o.start(t);o.stop(t+P.len+0.1);run.src.push(o);});}
+// ---- UI ----
+const $=id=>document.getElementById(id),go=$('go'),now=$('now'),len=$('len');
+function showLen(){len.textContent='≈ '+Math.round(plan(OPT).len)+' s';}
+function sync(){document.querySelectorAll('[data-k]').forEach(b=>b.setAttribute('aria-pressed',String(OPT[b.dataset.k]===b.dataset.v)));}
+function show(x){const rows=[];for(let L=0;L<run.P.lanes;L++){let m=null;for(const k of run.P.M)if(k.L===L&&k.t<=x)m=k;if(m&&x<m.t+m.d+0.6)rows.push(m.part+'  '+m.txt);}now.textContent=rows.join('\n');}
+function tick(){if(!run)return;const x=ctx.currentTime-run.t0;if(x>=run.P.len){stop();return;}if(x>0)show(x);raf=requestAnimationFrame(tick);}
+function stop(){cancelAnimationFrame(raf);go.setAttribute('aria-pressed','false');go.textContent='Listen';now.textContent='';if(!run)return;
+  const r=run,t=ctx.currentTime;run=null;r.bus.gain.cancelScheduledValues(t);r.bus.gain.setValueAtTime(r.bus.gain.value,t);r.bus.gain.linearRampToValueAtTime(0,t+0.06);
+  r.src.forEach(o=>{try{o.stop(t+0.08);}catch(e){}});setTimeout(()=>{try{r.bus.disconnect();}catch(e){}},300);}
+function start(){try{navigator.audioSession.type='playback';}catch(e){}            // iOS: play through the silent switch
+  if(!ctx)init();ctx.resume();stop();
+  const P=plan(OPT);run={bus:ctx.createGain(),src:[],P,t0:ctx.currentTime+0.15};run.bus.connect(master);
+  if(P.pedal)pedal(P);P.N.forEach(voice);go.setAttribute('aria-pressed','true');go.textContent='Stop';raf=requestAnimationFrame(tick);}
+go.addEventListener('click',()=>{run?stop():start();});
+document.querySelectorAll('[data-k]').forEach(b=>b.addEventListener('click',()=>{OPT[b.dataset.k]=b.dataset.v;sync();showLen();if(run)start();}));
+window.XS={RULES,plan,OPT};sync();showLen();
+})();
+</script>
+</body>
+</html>
