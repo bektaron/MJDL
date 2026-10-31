@@ -123,6 +123,12 @@ Rules:
 
 **Files:** none yet. Proposed folder `MJDL/sound/xanadu-sound/part-clip/`.
 
+**First design (Bekir, 31 Oct 2026, recorded so it is not lost; a concept note, not production — §11.5 P2 still waits for UE).**
+
+A soft, liquid-metal surface, seen from above. It reads like polished or brushed steel: it mirrors, but not fully — perhaps 20–30 % reflectance, not the brightness of a true mirror. On this surface lies a woman's profile. The profile ripples with the surface, half-seen, half-lost. As the music plays, the notes arrive one by one from above and fall onto the surface like drops. Where a drop lands, it alters that part of the woman — the part at the point of impact — a little. So the apparition keeps rippling on the surface and keeps changing with the drops, with the notes. For the whole length of the music it remains the image of a woman who cannot be reached.
+
+Open from this note (not yet ruled): which piece this is for — one of the two or both; whether the drop is the note's attack (hand-placed marker) or derived from amplitude (A§5B argues hand-placed for these quiet pieces); whether the profile is a still image (Photoshop/Midjourney) displaced by a ripple map, or 3D (liquid simulation) — the first is the Photoshop-native path, the second is the 3D path; what reflectance and ripple damping keep "half-seen" from becoming "unreadable".
+
 ---
 
 ## 11. What the research changes, and how it is integrated (added 31 Oct 2026)
