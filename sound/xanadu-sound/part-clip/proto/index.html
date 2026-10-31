@@ -38,6 +38,10 @@ input[type=range]{width:100%;margin:0;height:30px;accent-color:#9aa6b8;backgroun
 input[type=file]{display:none}
 .note{color:var(--dim);font-size:12px;margin:2px 0 12px}
 footer{padding:14px 0 0;color:var(--dim);font-size:11.5px;letter-spacing:.03em;text-align:center}
+.row.wrap{flex-wrap:wrap}
+.row.wrap button{flex:1 1 calc(33% - 6px)}
+.ctl.rnd{grid-template-columns:92px 1fr 92px}
+input[type=number]{width:100%;min-height:36px;font:inherit;font-size:15px;color:var(--fg);background:#101114;border:1px solid #30343a;border-radius:8px;padding:4px 8px}
 .row.liq{flex-wrap:wrap}
 .row.liq button{flex:1 1 calc(50% - 4px)}
 button[aria-pressed=true]{background:#2a2f38;border-color:#8a96aa;color:#fff}
@@ -67,11 +71,13 @@ pre#advNum{margin:0 0 8px;padding:10px;font:12px/1.5 ui-monospace,SFMono-Regular
   <div class="panel">
     <details open>
       <summary>Controls</summary>
-      <div class="row">
+      <div class="row wrap">
         <button id="bPlay" type="button">Pause</button>
         <button id="bRestart" type="button">Restart</button>
         <button id="bNext" type="button">Next event</button>
+        <button id="bRand" type="button" aria-pressed="false">Random 45 s</button>
       </div>
+      <div class="ctl rnd"><label for="nSeed">Seed</label><input id="nSeed" type="number" min="0" max="999999" step="1" value="1" inputmode="numeric"><output id="rLeft">idle</output></div>
       <label class="tog" for="tAuto"><input id="tAuto" type="checkbox"> Auto events <span class="dimtxt">(synthetic drops; off = tap only)</span></label>
       <div class="grp">Surface</div>
       <div class="row liq">
@@ -146,6 +152,7 @@ const MAXD     = 16;        // drops kept alive at once (impulse, spread and rev
 const SIM_LIFE = 20;        // seconds a drop stays in the list (spread reference + reveal window)
 const SPREAD_OFF = 2.0;     // spread slider maximum = off
 const S_REF    = 0.5;       // reference drop size (slider default): amp = DROP_AMP * s/S_REF, radius ~ sqrt(s/S_REF)
+const dropSize = (ev) => (ev.abs != null ? Math.min(2, Math.max(0.05, ev.abs * params.size / S_REF)) : ev.size * params.size);   // effective drop size
 const DROP_AMP = 0.8;       // impulse depth at the reference size
 const EDGE_DAMP = 0.07;     // border sponge, per iteration at 2 iterations/substep
 const MIN_LAM  = 6 / GRID;  // smallest effective wavelength (6 cells) to keep the ring resolved
@@ -211,6 +218,28 @@ function synthEvents() {
   return raw.map(dropFromEvent);
 }
 let EVENTS = synthEvents();
+
+// Random 45 s mode: only the DROPS vary (position, size, timing), seeded; the surface, its material numbers and the artist's sliders do not.
+// A random drop carries its own size `abs` (0.05 .. 2, a few large) that stands in for the Drop-size slider for that drop only;
+// the slider then acts as a multiplier relative to its default (x1 at 0.5), so the slider itself is never touched.
+const RANDOM_LEN = 45;
+function randomEvents(seed) {
+  const rnd = mulberry32(((seed | 0) * 2654435761 + 0x5EED1) >>> 0);
+  const out = [];
+  let t = 0.3 + rnd() * 1.2;
+  while (t < RANDOM_LEN) {
+    const pos = () => ({ x: 0.06 + 0.88 * rnd(), y: 0.06 + 0.88 * rnd() });
+    const size = () => 0.05 + 1.95 * Math.pow(rnd(), 3);                 // median ~0.29, about 1 in 6 is >= 1.2
+    out.push(Object.assign({ t, abs: size(), size: 1, pitch: 0, vel: 1 }, pos()));
+    if (rnd() < 0.22) {                                                   // cluster of 2-3
+      const extra = 1 + (rnd() < 0.4 ? 1 : 0);
+      for (let i = 0; i < extra; i++) { t += 0.3 + 0.25 * rnd(); if (t < RANDOM_LEN) out.push(Object.assign({ t, abs: size(), size: 1, pitch: 0, vel: 1 }, pos())); }
+    }
+    t += 0.3 + 3.7 * Math.pow(rnd(), 1.6);                                // irregular gaps 0.3 .. 4 s
+  }
+  return out;
+}
+let randomOn = false, randomDone = false, randomList = [], randomIdx = 0, randomSeed = 1;
 
 /* ======================================================================
    Procedural placeholder variants: an abstract, generic human-profile
@@ -562,8 +591,9 @@ out vec4 vP;
 void main(){ vP = aP; gl_Position = vec4(aPos * 2.0 - 1.0, 0.0, 1.0); }`;
 
 // uMode 0 -> crack map (RGBA8, MAX-blended, never cleared during a piece):
-//   R = fissure depth profile (soft-shouldered groove, thins to the tip), G = birth time (s, 1 s per level),
-//   B = wide halo (grime / stress around the fissure).  a = core half-width, b = birth time.
+//   R = fissure depth profile (steep-walled groove; its peak grows with the crack width, so depth ~ width),
+//   G = birth time (s, 1 s per level), B = wide halo (grime / stress around the fissure),
+//   A = spall footprint (written by FS_FRAG, never by a crack quad).  a = core half-width, b = birth time.
 // uMode 1 -> erosion increment of this step (RGBA8, cleared every step, MAX-blended):
 //   R = amount * feather(across).  a = amount (stack positions), b = feather start f0 (fraction of the half-width).
 const FS_CRACK = `#version 300 es
@@ -574,13 +604,31 @@ void main(){
   float d = abs(vP.x) * vP.y;
   if (uMode < 0.5) {
     float wc = vP.z;
-    float core = 1.0 - smoothstep(0.35 * wc, 1.4 * wc + 0.0008, d);
-    float R = core * clamp(wc / 0.0012, 0.2, 1.0);
+    float core = 1.0 - smoothstep(0.75 * wc, 1.15 * wc + 0.0006, d);
+    float R = core * (0.15 + 0.85 * clamp(wc / 0.012, 0.0, 1.0));
     float h = 1.0 - smoothstep(0.0, vP.y, d);
     float B = 0.6 * h * h * clamp(wc / 0.002, 0.25, 1.0);
-    o = vec4(R, vP.w * smoothstep(0.04, 0.3, core), B, 1.0);
+    o = vec4(R, vP.w * smoothstep(0.04, 0.3, core), B, 0.0);
   } else {
     o = vec4(vP.z * (1.0 - smoothstep(vP.w, 1.0, abs(vP.x))), 0.0, 0.0, 1.0);
+  }
+}`;
+
+// Spall fragments (triangle fans, attributes interpolated: a = edge distance (uv), b = height or reveal, c/d = tilt slope).
+// uMode 0 -> fragment map (RGBA8, no blending, cleared and redrawn while any plate moves; later plates overwrite earlier):
+//   R = plate height above the surface (plane, 0..HRANGE), G/B = plate tilt slope (gx, gy; 0.5 = flat), A = distance to the plate edge (0..AMAXD).
+// uMode 1 -> the footprint the plate came from, MAX-blended into the crack map's A: edge-feathered, times the reveal 0..1.
+const HRANGE = 0.03, AMAXD = 0.01, TMAX = 0.3, FEATH = 0.003;
+const FS_FRAG = `#version 300 es
+precision highp float;
+uniform float uMode;
+in vec4 vP; out vec4 o;
+void main(){
+  if (uMode < 0.5) {
+    o = vec4(clamp(vP.y / ${HRANGE.toFixed(4)}, 0.0, 1.0), 0.5 + 0.5 * clamp(vP.z / ${TMAX.toFixed(4)}, -1.0, 1.0),
+             0.5 + 0.5 * clamp(vP.w / ${TMAX.toFixed(4)}, -1.0, 1.0), clamp(vP.x / ${AMAXD.toFixed(4)}, 0.0, 1.0));
+  } else {
+    o = vec4(0.0, 0.0, 0.0, clamp(vP.x / ${FEATH.toFixed(4)}, 0.0, 1.0) * vP.y);
   }
 }`;
 
@@ -599,9 +647,11 @@ void main(){
   o = vec4(pt, ps, 0.0, 1.0);
 }`;
 
+// Solid display. Height (uv) = plate lift (fragment map R) - fissure depth (crack map R) - footprint depth (crack map A).
+// The light direction is derived from the brushing direction (it comes from the side of the streaks, slightly along them).
 const FS_DISPLAY_SOLID = `#version 300 es
 precision highp float; precision highp sampler2D; precision highp sampler2DArray;
-uniform sampler2D uCrack;
+uniform sampler2D uCrack, uFrag;
 uniform float uReflect, uRefract, uIdle, uTime, uCrackRes;
 uniform float uFPow, uSpecPow, uBrushStr, uBrushDir, uBevel, uPitAmt;
 uniform vec3 uTint, uColA, uColB, uColC, uColD, uColP;
@@ -610,34 +660,77 @@ uniform vec4 uSc;              // noise scale A, B, C, patch amount
 in vec2 vUv; out vec4 outC;
 
 ${GLSL_COMMON}
+const float HRANGE = ${HRANGE.toFixed(4)}, AMAXD = ${AMAXD.toFixed(4)}, TMAX = ${TMAX.toFixed(4)};
+const float DEPTH_MAX = 0.02;    // fissure depth where the crack-map R = 1 (uv); R already grows with the crack width
+const float SOCK_D = 0.004;      // depth of a spall footprint (uv)
+const vec2 AOD[6] = vec2[6](vec2(1.0, 0.0), vec2(0.5, 0.866), vec2(-0.5, 0.866), vec2(-1.0, 0.0), vec2(-0.5, -0.866), vec2(0.5, -0.866));
+
 float fbm3(vec2 p){ float a = 0.5, s = 0.0; for (int i = 0; i < 3; i++) { s += a * vnoise(p); p = p * 2.03 + vec2(17.1, 9.2); a *= 0.5; } return s; }
 float fbm(vec2 p){ float a = 0.5, s = 0.0; for (int i = 0; i < 4; i++) { s += a * vnoise(p); p = p * 2.03 + vec2(17.1, 9.2); a *= 0.5; } return s / 0.9375; }
+
+float hgt(vec2 q){
+  vec4 c = texture(uCrack, q);
+  return texture(uFrag, q).r * HRANGE - c.r * DEPTH_MAX - c.a * SOCK_D;
+}
+// stack colour at erosion value pp; bias > 0 blurs through the mip chain (the fissure floor is out of focus)
+vec3 stackCol(float pp, vec2 iuv, float bias){
+  pp = clamp(pp, 0.0, uNImg);
+  float fi = floor(pp), f = pp - fi, fb = min(fi + 1.0, uNImg);
+  vec3 a = texture(uVar, vec3(iuv, min(fi, uNImg - 1.0)), bias).rgb;
+  vec3 b = texture(uVar, vec3(iuv, min(fb, uNImg - 1.0)), bias).rgb;
+  a = (fi > uNImg - 0.5) ? WHITE : a;
+  b = (fb > uNImg - 0.5) ? WHITE : b;
+  return mix(a, b, smoothstep(0.12, 0.88, f));
+}
+// coat over the stack at erosion value pp (display-referred)
+vec3 skin(float pp, vec2 iuv, vec3 base, float brush){
+  vec3 img = stackCol(pp, iuv, 0.0);
+  float lumG = dot(img, vec3(0.299, 0.587, 0.114));
+  float expo = smoothstep(0.0, 0.8, pp);
+  vec3 b2 = base * mix(1.0, clamp(lumG / 0.55, 0.30, 1.5), 0.92);        // the profile image stains the coat
+  return mix(b2, img * vec3(1.0, 0.97, 0.93) * (0.92 + brush * uBrushStr * 0.3), expo * 0.92);
+}
 
 void main(){
   vec2 uv = vUv;
   float ct = 1.0 / uCrackRes;
-  // 1. crack map: depth R, birth G, halo B; bevel from its gradient (height = -depth - 0.6 halo)
+  // light direction follows the brushing: from the side of the streaks, a little along them
+  float ca = cos(uBrushDir), sa = sin(uBrushDir);
+  vec2 Lxy = 0.78 * normalize(0.55 * vec2(-sa, ca) - 0.35 * vec2(ca, sa));
+  vec3 L = normalize(vec3(Lxy, 0.65));
+  vec2 Ld = normalize(Lxy);
+  float tanE = 0.65 / 0.78;
+  // 1. crack map: depth R, birth G, halo B, footprint A; fragment map: plate height, tilt, edge distance
   vec4 c0 = texture(uCrack, uv);
-  float R = c0.r, Hh = c0.b;
-  float rl = texture(uCrack, uv - vec2(ct, 0.0)).r, rr = texture(uCrack, uv + vec2(ct, 0.0)).r;
-  float rd = texture(uCrack, uv - vec2(0.0, ct)).r, ru = texture(uCrack, uv + vec2(0.0, ct)).r;
+  vec4 cL = texture(uCrack, uv - vec2(ct, 0.0)), cR = texture(uCrack, uv + vec2(ct, 0.0));
+  vec4 cD = texture(uCrack, uv - vec2(0.0, ct)), cU = texture(uCrack, uv + vec2(0.0, ct));
+  float R = c0.r, Hh = c0.b, Sk = c0.a;
   float hl = texture(uCrack, uv - vec2(3.0 * ct, 0.0)).b, hr = texture(uCrack, uv + vec2(3.0 * ct, 0.0)).b;
   float hd = texture(uCrack, uv - vec2(0.0, 3.0 * ct)).b, hu = texture(uCrack, uv + vec2(0.0, 3.0 * ct)).b;
-  vec2 gc = -(0.5 * vec2(rr - rl, ru - rd) + 0.6 * vec2(hr - hl, hu - hd) / 6.0);
-  // 2. erosion value read at a bevel-shifted position (Refract slider): variant stack + exposure
+  vec2 gc = -(0.5 * vec2(cR.r - cL.r, cU.r - cD.r) + 0.45 * vec2(cR.a - cL.a, cU.a - cD.a) + 0.1 * vec2(hr - hl, hu - hd));
+  vec4 f0 = texture(uFrag, uv);
+  float eD = f0.a * AMAXD;
+  float pc = smoothstep(0.0, 0.0014, eD);                                  // plate coverage
+  vec2 gE = 0.5 * vec2(texture(uFrag, uv + vec2(ct, 0.0)).a - texture(uFrag, uv - vec2(ct, 0.0)).a,
+                       texture(uFrag, uv + vec2(0.0, ct)).a - texture(uFrag, uv - vec2(0.0, ct)).a);   // points into the plate
+  vec2 gEu = gE / max(length(gE), 1e-4);
+  float rimW = pc * (1.0 - smoothstep(0.0025, 0.0065, eD));                // the plate's top-skin edge
+  vec4 pt = texelFetch(uFrag, clamp(ivec2(uv * uCrackRes), ivec2(0), ivec2(int(uCrackRes) - 1)), 0);
+  vec2 tilt = (pt.gb - 0.5) * 2.0 * TMAX;
+  float fc = smoothstep(0.03, 0.14, R);                                    // fissure floor
+  float floorW = max(fc, Sk) * (1.0 - pc);                                 // fissure floor + the gap under a lifted plate
+  // 2. erosion value read at a bevel-shifted position: p0 = stack position of the surface, p = with the spall footprint
   vec2 suv = clamp(uv + gc * ct * uRefract * 10.0, 0.003, 0.997);
-  float p = clamp(maskAt(suv), 0.0, uNImg);
-  float fi = floor(p), f = p - fi;
-  float fb = min(fi + 1.0, uNImg);
+  float p0 = clamp(maskAt(suv), 0.0, uNImg);
+  float p = clamp(p0 + texture(uCrack, suv).a, 0.0, uNImg);
   vec2 iuv = vec2(suv.x, 1.0 - suv.y);
-  vec3 img = mix(layerCol(fi, iuv), layerCol(fb, iuv), smoothstep(0.12, 0.88, f));
-  float lumG = dot(img, vec3(0.299, 0.587, 0.114));
   float expo = smoothstep(0.0, 0.8, p);
-  // 3. brushing, procedural oxide / grime
-  float ca = cos(uBrushDir), sa = sin(uBrushDir);
+  // 3. brushing (not drawn across fissures or gaps; each plate has its own phase), procedural oxide / grime
   vec2 bu = vec2(ca * uv.x + sa * uv.y, -sa * uv.x + ca * uv.y);
-  float brush = (vnoise(vec2(bu.x * 4.0, bu.y * 190.0)) - 0.5) + 0.6 * (vnoise(vec2(bu.x * 7.0, bu.y * 80.0)) - 0.5)
-              + 0.3 * (vnoise(vec2(bu.x * 3.0, bu.y * 340.0)) - 0.5);
+  bu.y += pc * (pt.g * 31.7 + pt.b * 47.3);
+  float keep = 1.0 - smoothstep(0.0, 0.5, floorW);
+  float brush = ((vnoise(vec2(bu.x * 4.0, bu.y * 190.0)) - 0.5) + 0.6 * (vnoise(vec2(bu.x * 7.0, bu.y * 80.0)) - 0.5)
+              + 0.3 * (vnoise(vec2(bu.x * 3.0, bu.y * 340.0)) - 0.5)) * keep;
   vec2 wp = uv + 0.10 * (vec2(vnoise(uv * 3.1 + 1.3), vnoise(uv * 3.1 + 7.7)) - 0.5);   // domain warp: organic blotches
   float m1 = fbm(wp * uSc.x + 3.7), m2 = fbm(wp * uSc.y + 11.3), m3 = fbm(wp * uSc.z + 5.1);
   float cov = smoothstep(uCov.x, uCov.y, m1 * 0.65 + m2 * 0.35);
@@ -652,33 +745,54 @@ void main(){
   ox = mix(ox, uColP, pit);
   ox *= (1.0 + (m1 - 0.5) * 0.30) * (1.0 + flick) * (1.0 + brush * uBrushStr * 0.12);
   vec3 base = mix(metal, ox, cov);
-  base *= mix(1.0, clamp(lumG / 0.55, 0.30, 1.5), 0.92);             // the profile image stains the coat
-  vec3 a = mix(base, img * vec3(1.0, 0.97, 0.93) * (0.92 + brush * uBrushStr * 0.3), expo * 0.92);
+  vec3 aTop = skin(p0, iuv, base, brush);
+  vec3 a = skin(p, iuv, base, brush);
   float born = c0.g * 255.0;
   float fresh = (c0.g > 0.0 ? exp(-max(uTime - born, 0.0) / 6.0) : 0.0) * smoothstep(0.0, 0.45, R + Hh * 0.5);
   a = mix(a, uColA * 1.25, fresh * 0.45);                            // a new fissure shows bright metal for a few seconds
   a *= 1.0 - 0.38 * Hh * (1.0 - expo);                                // grime gathers around the fissure
   vec3 alb = a * a;
-  // 4. lighting: bevel + fine relief of the coat
+  vec3 albT = aTop * aTop;
+  alb = mix(alb, albT, rimW * 0.9);                                   // a lifted plate is edged by the top skin
+  // fissure floor / gap: the NEXT layer of the stack, out of focus and dark (darker the narrower the fissure)
+  vec3 imgF = stackCol(clamp(p0 + 1.0, 0.0, uNImg), iuv, 2.0) * vec3(1.0, 0.97, 0.93);
+  float dep = clamp(max(smoothstep(0.1, 1.0, R), Sk * 0.6), 0.0, 1.0);
+  alb = mix(alb, imgF * imgF * mix(0.30, 0.62, dep), floorW);
+  // 4. height field: occlusion (contact shadow along fissures, footprints and plates) and the shadow cast along the light
+  float h0 = f0.r * HRANGE - R * DEPTH_MAX - Sk * SOCK_D;
+  float ao = 0.0;
+  for (int i = 0; i < 6; i++) ao += max(hgt(uv + AOD[i] * 3.5 * ct) - h0, 0.0);
+  ao = clamp(ao / 6.0 / 0.012, 0.0, 1.0);
+  float sh = 0.0;
+  for (int i = 1; i <= 5; i++) {
+    float d = ct * 2.0 * float(i);
+    sh = max(sh, clamp((hgt(uv + Ld * d) - h0 - d * tanE) / 0.004, 0.0, 1.0));
+  }
+  float shade = (1.0 - 0.6 * ao) * (1.0 - 0.6 * sh);
+  // 5. lighting: bevels, plate tilt (flat per plate), fine relief of the coat
   vec2 mp = wp * 70.0;
   float n0 = fbm3(mp);
   vec2 gm = vec2(fbm3(mp + vec2(0.3, 0.0)) - n0, fbm3(mp + vec2(0.0, 0.3)) - n0);
-  vec2 gs = gc * uBevel + gm * 1.1 * cov;
+  vec2 bev = gc * uBevel + gEu * rimW * 1.3;
+  vec2 gs = bev + gm * 1.1 * cov * (1.0 - floorW) * (1.0 - 0.5 * pc) + tilt * 8.0 * pc;
   vec3 nL = normalize(vec3(-gs, 1.0));
-  vec3 L = normalize(vec3(-0.5, 0.6, 0.65));
   float dif = 0.5 + 0.75 * max(dot(nL, L), 0.0);
   vec3 nE = normalize(vec3(-gs * 1.6, 1.0));
   vec3 V = normalize(vec3(0.5 - uv, 1.7));
   vec3 Rv = reflect(-V, nE);
   float bare = clamp(1.0 - cov + expo, 0.0, 1.0);
-  float F0 = uReflect * (1.0 + 0.9 * bare);                          // low Fresnel base, a little higher where the metal shows
+  float F0 = uReflect * (1.0 + 0.9 * bare) * (1.0 - 0.6 * floorW);   // low Fresnel base, a little higher where the metal shows
   float cv = max(dot(nE, V), 0.0);
   float F = F0 + (1.0 - F0) * pow(1.0 - cv, uFPow);
   vec3 en = envMap(Rv.xy / max(Rv.z, 0.15) * 1.4) * uTint * (1.0 + brush * uBrushStr * 0.8);
   vec3 H = normalize(L + V);
-  float sp = pow(max(dot(nE, H), 0.0), uSpecPow) * max(1.0 + brush * uBrushStr * 4.0, 0.0) * (0.25 + 0.75 * bare) * (0.55 + 0.45 * m2);
-  vec3 col = alb * dif * (1.0 - F) + en * F + sp * 0.45 * mix(vec3(1.0), uTint, 0.7);
-  col *= 1.0 - 0.95 * smoothstep(0.15, 0.80, R);                     // the fissure itself is dark
+  float sp = pow(max(dot(nE, H), 0.0), uSpecPow) * max(1.0 + brush * uBrushStr * 4.0, 0.0) * (0.25 + 0.75 * bare) * (0.55 + 0.45 * m2) * (1.0 - 0.8 * floorW);
+  vec3 col = alb * dif * (1.0 - F) + en * F * (1.0 - 0.5 * floorW) + sp * 0.45 * mix(vec3(1.0), uTint, 0.7);
+  col *= shade;
+  // lit bevel on the top-skin edges (fissure lips, footprints, plate rims): the edge facing the light catches it
+  float bm = smoothstep(0.08, 0.7, length(bev));
+  float lit = max(dot(normalize(-bev + vec2(1e-5)), Ld), 0.0);
+  col += (albT * 1.5 + 0.04) * bm * lit * lit * 0.7;
   col = sqrt(max(col, 0.0));
   col += (hash12(gl_FragCoord.xy) - 0.5) / 255.0;
   outC = vec4(col, 1.0);
@@ -699,7 +813,7 @@ function makeProg(fs, names, vs) {
   return { p, u };
 }
 
-let progSim, progTens, progMask, progDerive, progDisplay, progCrack, progMaskS, progDisplayS;
+let progSim, progTens, progMask, progDerive, progDisplay, progCrack, progFrag, progMaskS, progDisplayS;
 try {
   progSim = makeProg(FS_SIM, ['uState', 'uC2', 'uDamp', 'uEdge', 'uSpread', 'uRs', 'uSize', 'uDa', 'uDb']);
   progTens = makeProg(FS_TENS, ['uState', 'uSize', 'uTens']);
@@ -708,8 +822,9 @@ try {
   progDisplay = makeProg(FS_DISPLAY, ['uDerived', 'uMask', 'uVar', 'uReflect', 'uRefract', 'uIdle', 'uTime', 'uNImg', 'uGrid', 'uW',
     'uFPow', 'uSpecPow', 'uBrushStr', 'uBrushDir', 'uIrid', 'uIdleScale', 'uIdleRate', 'uEdgeK', 'uTint']);
   progCrack = makeProg(FS_CRACK, ['uMode'], VS_CRACK);
+  progFrag = makeProg(FS_FRAG, ['uMode'], VS_CRACK);
   progMaskS = makeProg(FS_MASK_SOLID, ['uIn', 'uInc', 'uMax', 'uStep']);
-  progDisplayS = makeProg(FS_DISPLAY_SOLID, ['uCrack', 'uMask', 'uVar', 'uReflect', 'uRefract', 'uIdle', 'uTime', 'uCrackRes', 'uNImg', 'uGrid',
+  progDisplayS = makeProg(FS_DISPLAY_SOLID, ['uCrack', 'uFrag', 'uMask', 'uVar', 'uReflect', 'uRefract', 'uIdle', 'uTime', 'uCrackRes', 'uNImg', 'uGrid',
     'uFPow', 'uSpecPow', 'uBrushStr', 'uBrushDir', 'uBevel', 'uPitAmt', 'uTint', 'uColA', 'uColB', 'uColC', 'uColD', 'uColP', 'uCov', 'uSc']);
 } catch (err) { fail(String(err.message || err)); return; }
 
@@ -747,7 +862,8 @@ if (!state.ok || !mask.ok || !derived.ok) { fail('Float framebuffers are incompl
 // (GRID^2 RGBA8, cleared every step). Plain 8-bit targets: no float blending needed, works on iOS Safari.
 const crackMap = makeTarget(CRACK_RES, gl.RGBA8, gl.UNSIGNED_BYTE, gl.LINEAR);
 const incMap = makeTarget(GRID, gl.RGBA8, gl.UNSIGNED_BYTE, gl.NEAREST);
-if (!crackMap.ok || !incMap.ok) { fail('Crack framebuffers are incomplete on this device.'); return; }
+const fragMap = makeTarget(CRACK_RES, gl.RGBA8, gl.UNSIGNED_BYTE, gl.LINEAR);   // spall plates: height, tilt, edge distance
+if (!crackMap.ok || !incMap.ok || !fragMap.ok) { fail('Crack framebuffers are incomplete on this device.'); return; }
 const vaoC = gl.createVertexArray(), vboC = gl.createBuffer();
 gl.bindVertexArray(vaoC); gl.bindBuffer(gl.ARRAY_BUFFER, vboC);
 gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 24, 0);
@@ -876,7 +992,7 @@ const ramp = (a, att) => (a <= 0 ? 0 : att <= 0 || a >= att ? 1 : (() => { const
 
 // Snapshot of the current parameters for one drop (so later slider moves don't corrupt its reveal).
 function makeDrop(ev) {
-  const k = (ev.size * params.size) / S_REF, sc = Math.sqrt(k);
+  const k = dropSize(ev) / S_REF, sc = Math.sqrt(k);
   const lam = Math.max(params.wave * sc, MIN_LAM);                    // radius ~ sqrt(size)
   const sig = lam * 0.5 * (params.rings + 0.5);                       // envelope width: ringCount windows the cosine
   const st = simState();
@@ -908,30 +1024,49 @@ function fillDrops() {
 }
 
 /* ======================================================================
-   SOLID family: crack clusters.
-   A drop spawns, on the CPU, 3..7 primary rays (random walk with seeded jitter, smoothed with Catmull-Rom into
-   ~0.005 uv samples) and 1..3 branches per ray and generation. The whole cluster is planned at once (deterministic:
+   SOLID family: crack clusters and spalling.
+   Impact = drop size: s = event size x Drop-size slider (0.05 .. 2). s sets, per drop,
+     core half-width  w(s) = 0.001 .. 0.012 uv      ray count   RAY_TAB(s): 1-2 (s<0.2) .. 5 (s=0.5) .. 7-12 (s>=1.2)
+     ray length       0.26 uv x sqrt(s/0.5)          branch generations  (Ring count - 1) x genScale(s)  (0 below ~0.12, 1 at 0.5, 2.2 at 2)
+     spalling         s >= 1.2: 2..8 plates between neighbouring rays
+   The sliders stay multipliers on top of that: Wave speed (growth), Spread (reach cap), Ring count (generations),
+   Wavelength (step length / branch spacing), Attack (growth ease-in and plate lift time), Reveal lag, Erode softness.
+   A drop spawns, on the CPU, the rays (random walk with seeded jitter, smoothed with Catmull-Rom into ~0.005 uv samples)
+   and 1..3 branches per ray and generation. The whole cluster is planned at once (deterministic:
    seed = hash(drop index, x, y)); every step only the newly grown arc-length range of each polyline is rasterised:
      - the crack map (MAX-blended, never cleared): fissure depth, birth time, halo;
      - the erosion increment of this step (cleared every step), drawn along the same polylines but trailing the
        tip by the reveal lag; consecutive ranges tile the band exactly, so a drop adds `amount * feather` in total.
    Growth: one front distance D(t) per drop (speed from Wave speed, eased in over Attack); a polyline with offset
    `off` and speed factor `spd` has grown (D - off) * spd along itself, so branches leave when the parent's front
-   passes the branch point.
+   passes the branch point. Spalling plates are cut out by two ring cracks between adjacent rays (grown after the rays
+   reach them); when the outer ring closes the plate lifts (see fragPass).
    ====================================================================== */
 const CRACK_V   = 0.8;      // front speed (uv/s) per unit of the Wave speed slider
 const CRACK_L0  = 0.26;     // primary ray length at the reference drop size (uv); scaled by sqrt(size), capped by Spread
-const CORE_W    = 0.0030;   // fissure half-width at the root of a primary ray (uv); tips taper to TIP_W of it
+const CORE_W0   = 0.0010;   // fissure half-width at the root of a primary ray at the smallest drop (uv) ...
+const CORE_W1   = 0.0120;   // ... and at the largest; tips taper to TIP_W of it
 const TIP_W     = 0.18;
 const HALO_K    = 6;        // halo half-width = HALO_K * core half-width (min HMIN)
 const HMIN      = 0.0034;
-const BAND_W    = 0.010;    // erosion band half-width (uv) at the reference size
+const BAND_K    = 3.2;      // erosion band half-width = BAND_K * local core half-width + BAND_MIN (so the layer below shows INSIDE the fissure)
+const BAND_MIN  = 0.0015;
 const DS        = 0.005;    // polyline sample spacing (uv)
 const JAG       = 0.0016;   // fine jaggedness of the fissure core (uv)
-const MAX_POLY  = 90;       // polylines per drop
+const MAX_POLY  = 140;      // rays + branches per drop (ring cracks come on top)
+const MAX_FRAGS = 256;      // spalling plates kept (oldest dropped)
+const FRAG_S0   = 1.2;      // spalling starts at this effective drop size
 const OCC       = 128;      // CPU occupancy grid: how many earlier drops crossed each cell
 const occ = new Uint8Array(OCC * OCC), occStamp = new Int32Array(OCC * OCC);
-let cdrops = [], dropSeq = 0;
+let cdrops = [], dropSeq = 0, frags = [], fragBorn = 0, testDropSpec = null, testDrop = null;
+const RAY_TAB = [[0.05, 1.3], [0.15, 1.8], [0.2, 2.3], [0.5, 5], [1.2, 7.5], [2, 11]];   // drop size -> mean primary ray count
+function tabAt(tab, x) {
+  if (x <= tab[0][0]) return tab[0][1];
+  for (let i = 1; i < tab.length; i++) if (x <= tab[i][0]) { const t = (x - tab[i - 1][0]) / (tab[i][0] - tab[i - 1][0]); return tab[i - 1][1] + t * (tab[i][1] - tab[i - 1][1]); }
+  return tab[tab.length - 1][1];
+}
+const coreWidth = (s) => CORE_W0 + (CORE_W1 - CORE_W0) * Math.pow(clamp01((s - 0.05) / 1.95), 1.15);
+const genScale = (s) => (s < 0.5 ? sstep(0.12, 0.5, s) : 1 + 1.2 * clamp01((s - 0.5) / 1.5));
 
 function hash3(a, b, c) {
   let h = (Math.imul(a | 0, 0x9E3779B1) ^ Math.imul(b | 0, 0x85EBCA6B) ^ Math.imul(c | 0, 0xC2B2AE35)) >>> 0;
@@ -1002,50 +1137,184 @@ function buildPoly(rnd, g, x0, y0, ang0, len, gen, off, spd, w0, ewBase) {
   return { x: Float32Array.from(px), y: Float32Array.from(py), cx, cy, cl, ew, n: N, len: cl[N - 1], gen, off, spd, w0 };
 }
 
+// Inverse of frontDist: the time at which the front reaches distance D.
+function frontTime(D, v, att) {
+  if (D <= 0) return 0;
+  if (att <= 1e-6 || D >= 0.5 * v * att) return D / v + 0.5 * att;
+  let lo = 0, hi = 1;
+  const target = D / (v * att);
+  for (let i = 0; i < 28; i++) { const x = 0.5 * (lo + hi); if (x * x * x - 0.5 * x * x * x * x < target) lo = x; else hi = x; }
+  return 0.5 * (lo + hi) * att;
+}
+
+// A ring (concentric) crack between two ray points: a short bowed polyline, same fields as buildPoly's result.
+function buildRing(rnd, ox, oy, ax, ay, bx, by, off, spd, w0, ewv) {
+  const dx = bx - ax, dy = by - ay, len0 = Math.hypot(dx, dy);
+  const m = Math.max(3, Math.ceil(len0 / DS) + 1);
+  const nx = -dy / len0, ny = dx / len0;
+  const sgn = (nx * ((ax + bx) / 2 - ox) + ny * ((ay + by) / 2 - oy)) >= 0 ? 1 : -1;     // bow away from the impact
+  const cx = new Float32Array(m), cy = new Float32Array(m), cl = new Float32Array(m), ew = new Float32Array(m);
+  let jg = 0;
+  for (let j = 0; j < m; j++) {
+    const t = j / (m - 1);
+    jg = jg * 0.5 + (rnd() - 0.5) * 2 * JAG * 1.5;
+    const off2 = (sgn * 0.10 * len0 * Math.sin(Math.PI * t) + (j === 0 || j === m - 1 ? 0 : jg));
+    cx[j] = ax + dx * t + nx * off2; cy[j] = ay + dy * t + ny * off2;
+    if (j) cl[j] = cl[j - 1] + Math.hypot(cx[j] - cx[j - 1], cy[j] - cy[j - 1]);
+    ew[j] = ewv;
+  }
+  return { x: cx, y: cy, cx, cy, cl, ew, n: m, len: cl[m - 1], gen: 1, off, spd, w0, ring: true };
+}
+
+const polyRadii = (P, ox, oy) => P.rad || (P.rad = Float32Array.from({ length: P.n }, (_, i) => Math.hypot(P.cx[i] - ox, P.cy[i] - oy)));
+const firstAtLeast = (arr, r, from) => { for (let i = from; i < arr.length; i++) if (arr[i] >= r) return i; return -1; };
+function segsCross(ax, ay, bx, by, cx, cy, dx, dy) {
+  const d1 = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax), d2 = (bx - ax) * (dy - ay) - (by - ay) * (dx - ax);
+  const d3 = (dx - cx) * (ay - cy) - (dy - cy) * (ax - cx), d4 = (dx - cx) * (by - cy) - (dy - cy) * (bx - cx);
+  return d1 * d2 < 0 && d3 * d4 < 0;
+}
+
+// Spalling: between neighbouring primary rays, an inner and an outer radius -> a polygon (ray samples + two ring cracks).
+// The plate is the polygon inset by the crack width; it is stored as a fan with the distance to each edge (see emitPlate).
+function planFragments(rnd, ox, oy, prims, s, sc, tm, v, att, t0, polys) {
+  if (s < FRAG_S0 || prims.length < 3) return;
+  const u = clamp01((s - FRAG_S0) / (2 - FRAG_S0));
+  const want = Math.min(prims.length, Math.max(2, Math.min(8, Math.round(2 + 6 * u))));
+  const idx = prims.map((_, i) => i);
+  for (let i = idx.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); const q = idx[i]; idx[i] = idx[j]; idx[j] = q; }
+  const rs = 0.045 + 0.03 * sc;
+  let made = 0;
+  for (const wi of idx) {
+    if (made >= want) break;
+    const A = prims[wi], B = prims[(wi + 1) % prims.length];
+    if (A === B) continue;
+    const rA = polyRadii(A, ox, oy), rB = polyRadii(B, ox, oy);
+    let mA = 0, mB = 0; for (let i = 0; i < rA.length; i++) mA = Math.max(mA, rA[i]); for (let i = 0; i < rB.length; i++) mB = Math.max(mB, rB[i]);
+    const r1 = rs * (0.25 + 0.3 * rnd());
+    const r2 = Math.min(r1 + rs * (0.7 + 0.7 * rnd()), 0.9 * Math.min(mA, mB));
+    if (r2 - r1 < 0.03) continue;
+    const a0 = firstAtLeast(rA, r1, 0), b0 = firstAtLeast(rB, r1, 0);
+    if (a0 < 0 || b0 < 0) continue;
+    const a1 = firstAtLeast(rA, r2, a0), b1 = firstAtLeast(rB, r2, b0);
+    if (a1 < 0 || b1 < 0 || a1 - a0 < 2 || b1 - b0 < 2) continue;
+    const w0r = 0.5 * (A.w0 + B.w0) * 0.8;
+    const ringO = buildRing(rnd, ox, oy, A.cx[a1], A.cy[a1], B.cx[b1], B.cy[b1],
+      Math.max(A.off + A.cl[a1] / A.spd, B.off + B.cl[b1] / B.spd), 2.2, w0r, tm);
+    const ringI = buildRing(rnd, ox, oy, B.cx[b0], B.cy[b0], A.cx[a0], A.cy[a0],
+      Math.max(A.off + A.cl[a0] / A.spd, B.off + B.cl[b0] / B.spd), 2.2, w0r, tm);
+    // polygon: A up, outer ring, B down, inner ring (every 3rd sample: the plate edge need not follow the jag of the fissure)
+    const X = [], Y = [], ST = 3;
+    const take = (arr, i0, i1) => {
+      const d = i1 >= i0 ? 1 : -1;
+      for (let i = i0; d * (i1 - i) >= 0; i += d) if (Math.abs(i - i0) % ST === 0 || i === i1) { X.push(arr[0][i]); Y.push(arr[1][i]); }
+    };
+    take([A.cx, A.cy], a0, a1);
+    for (let i = 1; i < ringO.n - 1; i += ST) { X.push(ringO.cx[i]); Y.push(ringO.cy[i]); }
+    take([B.cx, B.cy], b1, b0);
+    for (let i = 1; i < ringI.n - 1; i += ST) { X.push(ringI.cx[i]); Y.push(ringI.cy[i]); }
+    const n = X.length;
+    let area = 0, gx = 0, gy = 0;
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n, cr = X[i] * Y[j] - X[j] * Y[i];
+      area += cr; gx += (X[i] + X[j]) * cr; gy += (Y[i] + Y[j]) * cr;
+    }
+    area *= 0.5;
+    if (Math.abs(area) < 0.0006) continue;
+    const sg = area > 0 ? 1 : -1;
+    // fan centre: a point that sees every vertex (star-shaped kernel); try the centroid first, then a grid over the bbox
+    const starOK = (px, py) => { for (let i = 0; i < n; i++) { const j = (i + 1) % n; if (sg * ((X[i] - px) * (Y[j] - py) - (Y[i] - py) * (X[j] - px)) <= 1e-9) return false; } return true; };
+    let cx = gx / (6 * area), cy = gy / (6 * area), ok = starOK(cx, cy);
+    if (!ok) {
+      let x0 = 9, x1 = -9, y0 = 9, y1 = -9;
+      for (let i = 0; i < n; i++) { x0 = Math.min(x0, X[i]); x1 = Math.max(x1, X[i]); y0 = Math.min(y0, Y[i]); y1 = Math.max(y1, Y[i]); }
+      let best = 1e9;
+      for (let gj = 0; gj < 9; gj++) for (let gi = 0; gi < 9; gi++) {
+        const px = x0 + (x1 - x0) * (gi + 0.5) / 9, py = y0 + (y1 - y0) * (gj + 0.5) / 9;
+        const dd = Math.hypot(px - gx / (6 * area), py - gy / (6 * area));
+        if (dd < best && starOK(px, py)) { best = dd; cx = px; cy = py; ok = true; }
+      }
+    }
+    for (let i = 0; i < n && ok; i++) for (let j = i + 2; j < n && ok; j++) {   // and simple
+      if (i === 0 && j === n - 1) continue;
+      if (segsCross(X[i], Y[i], X[(i + 1) % n], Y[(i + 1) % n], X[j], Y[j], X[(j + 1) % n], Y[(j + 1) % n])) ok = false;
+    }
+    if (!ok) continue;
+    // edge distance of the fan (centroid -> edge i), original and inset polygon
+    const edgeD = (px, py) => Float32Array.from({ length: n }, (_, i) => {
+      const j = (i + 1) % n, ex = px[j] - px[i], ey = py[j] - py[i], el = Math.hypot(ex, ey) || 1;
+      return Math.abs(ex * (cy - py[i]) - ey * (cx - px[i])) / el;
+    });
+    const g = 0.0008 + 0.5 * w0r;
+    const QX = new Float32Array(n), QY = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const dx = cx - X[i], dy = cy - Y[i], dl = Math.hypot(dx, dy) || 1, k = dl > 2.5 * g ? g / dl : 0.6;
+      QX[i] = X[i] + dx * k; QY[i] = Y[i] + dy * k;
+    }
+    const ol = Math.hypot(cx - ox, cy - oy) || 1, ux = (cx - ox) / ol, uy = (cy - oy) / ol, vx = -uy, vy = ux;
+    let radA = 1e-4, radP = 1e-4;
+    for (let i = 0; i < n; i++) { radA = Math.max(radA, Math.abs((X[i] - cx) * ux + (Y[i] - cy) * uy)); radP = Math.max(radP, Math.abs((X[i] - cx) * vx + (Y[i] - cy) * vy)); }
+    const big = sstep(FRAG_S0, 2, s);
+    const Dend = ringO.off + ringO.len / ringO.spd;
+    polys.push(ringO, ringI);
+    frags.push({ tF: t0 * DT + frontTime(Dend, v, att) + 0.04, att: Math.max(att, 0.12), n,
+      X: Float32Array.from(X), Y: Float32Array.from(Y), QX, QY, cx, cy, dO: edgeD(X, Y), dI: edgeD(QX, QY),
+      ux, uy, vx, vy, radA, radP, T: 0.005 + 0.010 * big + 0.003 * rnd(), L: 0.006 + 0.008 * big + 0.003 * rnd(),
+      tw: rnd() * 2 - 1, stage: 0 });
+    if (frags.length > MAX_FRAGS) frags.shift();
+    made++;
+  }
+}
+
 function spawnCracks(ev) {
   const seq = dropSeq++;
   const ox = ev.x, oy = 1 - ev.y;
   const rnd = mulberry32(hash3(seq, Math.round(ox * 4096), Math.round(oy * 4096)));
-  const k = (ev.size * params.size) / S_REF, sc = Math.sqrt(k);
+  const s = dropSize(ev);                                           // effective drop size 0.05 .. 2
+  const k = s / S_REF, sc = Math.sqrt(k);
   const reach = params.spread >= SPREAD_OFF - 1e-9 ? 1.5 : 0.5 * params.spread;
   const stepL = Math.min(0.12, Math.max(0.012, params.wave * 0.3));
   const sigma = Math.min(0.6, 0.30 * Math.sqrt(stepL / 0.048) * (0.55 + 0.45 * Math.min(2, params.wave / 0.16)));
   const g = { ox, oy, reach, stepL, sigma };
-  const nRays = Math.max(3, Math.min(7, Math.round(3 + 4 * clamp01((sc - 0.4) / 1.2) + (rnd() - 0.5) * 1.6)));
-  const lvls = params.rings - 1;                                    // branch generations (children levels); .5 = half of the last level
+  let nRays = Math.round(tabAt(RAY_TAB, s) + (rnd() - 0.5) * 1.8);
+  nRays = Math.max(1, Math.min(12, nRays));
+  if (s < 0.2) nRays = Math.min(nRays, 2); else if (s >= FRAG_S0) nRays = Math.max(nRays, 7);
+  const wS = coreWidth(s);
+  const lvls = Math.min(5, Math.max(0, (params.rings - 1) * genScale(s)));   // branch generations (children levels); .5 = half of the last level
   const spacing = Math.max(0.03, params.wave * 0.5);
   const tm = Math.min(1.8, 1 + 0.25 * Math.min(occAt(ox, oy), 4));     // dropped next to an old fissure: wider bands
-  const polys = [];
+  const polys = [], prims = [];
   const a0 = rnd() * Math.PI * 2;
-  for (let i = 0; i < nRays && polys.length < MAX_POLY; i++) {
+  for (let i = 0; i < nRays; i++) {
     const ang = a0 + (Math.PI * 2) * (i + (rnd() - 0.5) * 0.7) / nRays;
     const len = Math.min(reach, CRACK_L0 * sc * (0.6 + 0.6 * rnd()));
-    const w0 = CORE_W * (0.8 + 0.2 * sc) * (0.85 + 0.3 * rnd());
+    const w0 = wS * (0.85 + 0.3 * rnd());
     const P = buildPoly(rnd, g, ox, oy, ang, len, 0, 0, 0.92 + 0.16 * rnd(), w0, tm);
     if (!P) continue;
-    polys.push(P);
-    // children, breadth first per ray
-    const queue = [P];
-    while (queue.length && polys.length < MAX_POLY) {
-      const q = queue.shift();
-      if (q.gen >= Math.ceil(lvls)) continue;
-      const lastHalf = lvls - q.gen < 1;                              // this parent's children belong to the fractional level
-      const nb = q.gen === 0 ? 1 + Math.floor(rnd() * 3) : Math.floor(rnd() * 2.2);
-      let s = q.len * 0.22 + rnd() * 0.02;
-      for (let j = 0; j < nb && s < q.len * 0.88 && polys.length < MAX_POLY; j++, s += spacing * (0.8 + 0.4 * rnd())) {
-        if (lastHalf && rnd() >= (lvls - Math.floor(lvls) || 1)) continue;
-        let ii = 0; while (ii < q.n - 2 && q.cl[ii + 1] < s) ii++;
-        const tx = q.x[Math.min(q.n - 1, ii + 1)] - q.x[ii], ty = q.y[Math.min(q.n - 1, ii + 1)] - q.y[ii];
-        const f = q.cl[Math.min(q.n - 1, ii + 1)] > q.cl[ii] ? (s - q.cl[ii]) / (q.cl[ii + 1] - q.cl[ii]) : 0;
-        const bx = q.x[ii] + tx * f, by = q.y[ii] + ty * f;
-        const side = rnd() < 0.5 ? -1 : 1;
-        const ca = Math.atan2(ty, tx) + side * (0.45 + 0.5 * rnd());
-        const clen = Math.min(reach, q.len * (0.35 + 0.3 * rnd()));
-        const C = buildPoly(rnd, g, bx, by, ca, clen, q.gen + 1, q.off + s / q.spd, q.spd * (0.8 + 0.15 * rnd()), q.w0 * 0.62, tm);
-        if (C) { polys.push(C); queue.push(C); }
-      }
+    polys.push(P); prims.push(P);
+  }
+  // children, breadth first over ALL rays (so a big drop's last rays are not starved by the polygon cap)
+  const queue = prims.slice();
+  while (queue.length && polys.length < MAX_POLY) {
+    const q = queue.shift();
+    if (q.gen >= Math.ceil(lvls)) continue;
+    const lastHalf = lvls - q.gen < 1;                              // this parent's children belong to the fractional level
+    const nb = (q.gen === 0 ? 1 + Math.floor(rnd() * 3) + (s >= FRAG_S0 ? 1 : 0) : Math.floor(rnd() * 2.2));
+    let sb = q.len * 0.22 + rnd() * 0.02;
+    for (let j = 0; j < nb && sb < q.len * 0.88 && polys.length < MAX_POLY; j++, sb += spacing * (0.8 + 0.4 * rnd())) {
+      if (lastHalf && rnd() >= (lvls - Math.floor(lvls) || 1)) continue;
+      let ii = 0; while (ii < q.n - 2 && q.cl[ii + 1] < sb) ii++;
+      const tx = q.x[Math.min(q.n - 1, ii + 1)] - q.x[ii], ty = q.y[Math.min(q.n - 1, ii + 1)] - q.y[ii];
+      const f = q.cl[Math.min(q.n - 1, ii + 1)] > q.cl[ii] ? (sb - q.cl[ii]) / (q.cl[ii + 1] - q.cl[ii]) : 0;
+      const bx = q.x[ii] + tx * f, by = q.y[ii] + ty * f;
+      const side = rnd() < 0.5 ? -1 : 1;
+      const ca = Math.atan2(ty, tx) + side * (0.45 + 0.5 * rnd());
+      const clen = Math.min(reach, q.len * (0.35 + 0.3 * rnd()));
+      const C = buildPoly(rnd, g, bx, by, ca, clen, q.gen + 1, q.off + sb / q.spd, q.spd * (0.8 + 0.15 * rnd()), q.w0 * 0.62, tm);
+      if (C) { polys.push(C); queue.push(C); }
     }
   }
+  const v = CRACK_V * params.speed;
+  planFragments(rnd, ox, oy, prims, s, sc, tm, v, params.attack, stepCount, polys);
   // remember where this drop cracked (each drop counts once per cell), after all lookups
   for (const P of polys) for (let i = 0; i < P.n; i++) {
     const cx = Math.floor(P.x[i] * OCC), cy = Math.floor(P.y[i] * OCC);
@@ -1054,11 +1323,10 @@ function spawnCracks(ev) {
     if (occStamp[c] !== seq + 1) { occStamp[c] = seq + 1; if (occ[c] < 255) occ[c]++; }
   }
   if (!polys.length) return;
-  const v = CRACK_V * params.speed;
   let dmax = 0; for (const P of polys) dmax = Math.max(dmax, P.off + P.len / P.spd);
   cdrops.push({ t0: stepCount, seq, polys, v, att: params.attack, lag: params.lag,
                 ero: Math.min(1, Math.max(0.05, ERODE_GAIN * k)), f0: 1 - (0.06 + 0.94 * clamp01(params.soft)),
-                wE: BAND_W * (0.8 + 0.2 * sc), tb: Math.min(255, stepCount * DT) / 255,
+                tb: Math.min(255, stepCount * DT) / 255,
                 tEnd: dmax / Math.max(v, 1e-4) + 0.5 * params.attack + params.lag + 0.1 });
 }
 
@@ -1085,8 +1353,9 @@ function emitRange(out, cd, P, L0, L1, core) {
       const ext = 0.0012; ax -= ux * ext; ay -= uy * ext; bx += ux * ext; by += uy * ext;   // overlap: no gaps at bends
     } else {
       const eA = P.ew[i] + (P.ew[i + 1] - P.ew[i]) * fa, eB = P.ew[i] + (P.ew[i + 1] - P.ew[i]) * fb;
-      hA = Math.max(0.004, cd.wE * Math.pow(0.8, P.gen) * eA * (1 - 0.55 * ta));
-      hB = Math.max(0.004, cd.wE * Math.pow(0.8, P.gen) * eB * (1 - 0.55 * tb));
+      const wA = P.w0 * (1 - (1 - TIP_W) * Math.pow(ta, 0.85)), wB = P.w0 * (1 - (1 - TIP_W) * Math.pow(tb, 0.85));
+      hA = Math.max(0.0025, BAND_K * wA * eA + BAND_MIN);        // proportional to the crack width: the layer below shows inside the fissure
+      hB = Math.max(0.0025, BAND_K * wB * eB + BAND_MIN);
       a0 = cd.ero * (P.gen ? 0.35 + 0.65 * sstep(0, 0.03, s0) : 1);
       a1 = cd.ero * (P.gen ? 0.35 + 0.65 * sstep(0, 0.03, s1) : 1);
       b0 = b1 = cd.f0;
@@ -1098,18 +1367,19 @@ function emitRange(out, cd, P, L0, L1, core) {
   }
 }
 
-function drawQuads(arr, target, mode) {
+function drawBatch(arr, target, prog, mode, blendMax) {
   if (!arr.length) return;
   gl.bindVertexArray(vaoC);
   gl.bindBuffer(gl.ARRAY_BUFFER, vboC);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arr), gl.DYNAMIC_DRAW);
-  const P = pass(progCrack, target, target.size);
+  const P = pass(prog, target, target.size);
   gl.uniform1f(P.u.uMode, mode);
-  gl.enable(gl.BLEND); gl.blendEquation(gl.MAX); gl.blendFunc(gl.ONE, gl.ONE);
+  if (blendMax) { gl.enable(gl.BLEND); gl.blendEquation(gl.MAX); gl.blendFunc(gl.ONE, gl.ONE); } else gl.disable(gl.BLEND);
   gl.drawArrays(gl.TRIANGLES, 0, arr.length / 6);
   gl.disable(gl.BLEND);
   gl.bindVertexArray(vao);
 }
+const drawQuads = (arr, target, mode) => drawBatch(arr, target, progCrack, mode, true);
 
 // One fixed step of every growing cluster: crack map += newly grown core, increment target = newly eroded band.
 function crackPass() {
@@ -1131,6 +1401,61 @@ function crackPass() {
   drawQuads(band, incMap, 1);
 }
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+
+// Spalling plates. A plate is the polygon between two rays and two ring cracks, inset by the crack width. When the outer ring
+// closes (tF) it lifts and moves outward over Attack, tilting about its inner edge, then settles at ~half the lift.
+//   plate map (redrawn while any plate moves): the polygon at its displaced position, as a fan from the centroid;
+//     height = plane (lift * (0.3 + 0.7 * outward position + 0.25 * sideways twist)), tilt = the plane's slope, edge distance.
+//   footprint (crack map A, MAX-blended): the original polygon, revealed 0 -> 1 over the lift; the display advances the
+//     variant stack by the footprint, so the plate face and the gap under it show the next layer.
+function plateEnv(f, t) {
+  const u = clamp((t - f.tF) / f.att, 0, 1);
+  return { u, lf: sstep(0, 0.45, u) * (1 - 0.45 * sstep(0.45, 1, u)), tr: sstep(0, 0.8, u) };
+}
+function emitPlate(out, f, t) {
+  const e = plateEnv(f, t), lift = f.L * e.lf, tr = f.T * e.tr, n = f.n;
+  const hAt = (x, y) => {
+    const qa = clamp(0.5 + ((x - f.cx) * f.ux + (y - f.cy) * f.uy) / (2 * f.radA), 0, 1);
+    const qp = clamp(0.5 + ((x - f.cx) * f.vx + (y - f.cy) * f.vy) / (2 * f.radP), 0, 1);
+    return lift * (0.3 + 0.7 * qa + 0.25 * f.tw * (qp - 0.5));
+  };
+  const sa = lift * 0.7 / (2 * f.radA), sp = lift * 0.25 * f.tw / (2 * f.radP);
+  const gx = sa * f.ux + sp * f.vx, gy = sa * f.uy + sp * f.vy;       // slope of the plane
+  const mx = f.ux * tr, my = f.uy * tr, hc = hAt(f.cx, f.cy);
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    out.push(f.cx + mx, f.cy + my, f.dI[i], hc, gx, gy,
+             f.QX[i] + mx, f.QY[i] + my, 0, hAt(f.X[i], f.Y[i]), gx, gy,
+             f.QX[j] + mx, f.QY[j] + my, 0, hAt(f.X[j], f.Y[j]), gx, gy);
+  }
+}
+function emitFootprint(out, f, reveal) {
+  const n = f.n;
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    out.push(f.cx, f.cy, f.dO[i], reveal, 0, 0,  f.X[i], f.Y[i], 0, reveal, 0, 0,  f.X[j], f.Y[j], 0, reveal, 0, 0);
+  }
+}
+function fragPass() {
+  if (!frags.length) return;
+  const t = stepCount * DT, foot = [];
+  let redraw = false;
+  for (const f of frags) {
+    if (f.stage === 2 || t + 1e-9 < f.tF) continue;
+    if (f.stage === 0) { f.stage = 1; fragBorn++; }
+    const e = plateEnv(f, t);
+    redraw = true;
+    emitFootprint(foot, f, sstep(0, 0.5, e.u));
+    if (e.u >= 1) f.stage = 2;
+  }
+  drawBatch(foot, crackMap, progFrag, 1, true);
+  if (redraw) {
+    clearTarget(fragMap, 0, 0, 0, 0);
+    const plates = [];
+    for (const f of frags) if (f.stage > 0) emitPlate(plates, f, t);
+    drawBatch(plates, fragMap, progFrag, 0, false);
+  }
+}
 
 function bindTex(unit, target, tex, loc) {
   gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(target, tex); gl.uniform1i(loc, unit);
@@ -1181,10 +1506,14 @@ function substep() {
   const t = stepCount * DT;
   let ev = null;
   if (manualQ.length) { ev = manualQ.shift(); evCount++; }
-  else if (autoEvents && evIdx < EVENTS.length && EVENTS[evIdx].t <= t + 1e-9) { ev = EVENTS[evIdx++]; evCount++; }
+  else if (randomOn && randomIdx < randomList.length && randomList[randomIdx].t <= t + 1e-9) { ev = randomList[randomIdx++]; evCount++; }
+  else if (!randomOn && autoEvents && evIdx < EVENTS.length && EVENTS[evIdx].t <= t + 1e-9) { ev = EVENTS[evIdx++]; evCount++; }
+  else if (testDrop && t >= testDrop.t - 1e-9) { ev = { t, x: 0.5, y: 0.5, size: 1, pitch: 0, vel: 1 }; testDrop = null; evCount++; }
+  if (randomOn && t >= RANDOM_LEN - 1e-9) { randomOn = false; randomDone = true; }   // auto-stop: the surface keeps its state
   if (ev) { if (family === 'solid') spawnCracks(ev); else addDrop(makeDrop(ev)); }
   if (family === 'solid') {                            // no wave simulation: cracks grow, the erosion follows them
     crackPass();
+    fragPass();
     maskSolidPass();
     stepCount++;
     return;
@@ -1206,8 +1535,9 @@ function restart() {
   state.t.forEach((t) => clearTarget(t, 0, 0, 0, 1));
   mask.t.forEach((t) => clearTarget(t, 0, 0, 0, 1));
   clearTarget(derived, 0, 0, 0, 1);
-  clearTarget(crackMap, 0, 0, 0, 1); clearTarget(incMap, 0, 0, 0, 1);
-  cdrops = []; dropSeq = 0; occ.fill(0); occStamp.fill(0);
+  clearTarget(crackMap, 0, 0, 0, 0); clearTarget(incMap, 0, 0, 0, 1); clearTarget(fragMap, 0, 0, 0, 0);
+  cdrops = []; dropSeq = 0; occ.fill(0); occStamp.fill(0); frags = []; fragBorn = 0; testDrop = testDropSpec ? { t: testDropSpec } : null;
+  randomOn = false; randomDone = false; randomIdx = 0; randomList = [];
   stepCount = 0; acc = 0; evIdx = 0; evCount = 0; manualQ = []; manualN = 0; tapN = 0; drops = [];
 }
 
@@ -1272,6 +1602,7 @@ function renderSolid(w) {
   bindTex(0, gl.TEXTURE_2D, crackMap.tex, P.u.uCrack);
   bindTex(1, gl.TEXTURE_2D, mask.cur.tex, P.u.uMask);
   bindTex(2, gl.TEXTURE_2D_ARRAY, varTex, P.u.uVar);
+  bindTex(3, gl.TEXTURE_2D, fragMap.tex, P.u.uFrag);
   gl.uniform1f(P.u.uReflect, params.reflect); gl.uniform1f(P.u.uRefract, params.refract);
   gl.uniform1f(P.u.uIdle, params.idle); gl.uniform1f(P.u.uTime, stepCount * DT + (playing ? acc : 0));
   gl.uniform1f(P.u.uCrackRes, CRACK_RES); gl.uniform1f(P.u.uNImg, variantN); gl.uniform1f(P.u.uGrid, GRID);
@@ -1285,7 +1616,7 @@ function renderSolid(w) {
   gl.drawArrays(gl.TRIANGLES, 0, 3);
 }
 
-let last = 0, hudKey = '';
+let last = 0, hudKey = '', jsonFrag = 0, jsonRand = false;
 function frame(now) {
   const dt = Math.min(Math.max((now - last) / 1000, 0), 0.1); last = now;
   if (playing) {
@@ -1295,10 +1626,15 @@ function frame(now) {
     if (acc >= DT) acc = 0;     // backlog: slow down rather than spiral
   }
   render();
-  const key = Math.floor(stepCount / 6) + ':' + evCount;
+  const key = Math.floor(stepCount / 6) + ':' + evCount + ':' + fragBorn;
   if (key !== hudKey) {
     hudKey = key;
-    $('hud').textContent = (stepCount * DT).toFixed(1) + ' s · ' + evCount + ' drops' + ((manualN + tapN) ? ' (' + (manualN + tapN) + ' manual)' : '');
+    if (family === 'solid' && fragBorn !== jsonFrag) { jsonFrag = fragBorn; syncValues(); }
+    $('hud').textContent = (stepCount * DT).toFixed(1) + ' s · ' + evCount + ' drops' + ((manualN + tapN) ? ' (' + (manualN + tapN) + ' manual)' : '') +
+      (randomOn ? ' · random seed ' + randomSeed + ' · ' + randomLabel() : (randomDone ? ' · random done' : ''));
+    $('rLeft').textContent = randomLabel();
+    $('bRand').setAttribute('aria-pressed', randomOn ? 'true' : 'false');
+    if (randomOn !== jsonRand) { jsonRand = randomOn; syncValues(); }
   }
   requestAnimationFrame(frame);
 }
@@ -1315,17 +1651,21 @@ const ids = { size: 'Size', attack: 'Attack', wave: 'Wave', rings: 'Rings', spee
               lag: 'Lag', soft: 'Soft', reflect: 'Reflect', refract: 'Refract', idle: 'Idle', time: 'Time' };
 
 const r3 = (v) => Math.round(v * 1000) / 1000;
+const seedVal = () => { const v = parseInt($('nSeed').value, 10); return Number.isFinite(v) ? Math.max(0, Math.min(999999, v)) : 1; };
 function syncValues() {
   const cur = family === 'solid' ? solid : liquid;
   const o = { surface: cur.name, family };
   if (family === 'liquid') o.liquid = liquid.name;
   o.autoEvents = autoEvents;
+  o.randomMode = randomOn ? 'running' : (randomDone ? 'done' : false);
+  o.seed = seedVal();
   Object.assign(o, { dropSize: params.size, attack: params.attack, wavelength: params.wave, ringCount: params.rings, waveSpeed: params.speed });
   if (family === 'solid') {
     const reach = params.spread >= SPREAD_OFF - 1e-9 ? null : r3(0.5 * params.spread);
     $('wnote').textContent = 'crack growth ' + (CRACK_V * params.speed).toFixed(3) + ' uv/s · reach ' + (reach == null ? 'unlimited' : reach + ' uv') +
-      ' · branch generations ' + Math.max(0, params.rings - 1) + ' · no wave simulation';
+      ' · branch generations ' + Math.max(0, params.rings - 1) + ' x size factor · spalling from size ' + FRAG_S0 + ' · no wave simulation';
     o.crackGrowthSpeed = r3(CRACK_V * params.speed);
+    o.fragments = fragBorn;
     o.damping = null;
   } else {
     const st = simState();
@@ -1354,8 +1694,10 @@ function advText() {
             'brush         ' + S.brushStr + ' @ ' + S.brushDir + ' rad',
             'tint          ' + S.tint.join(', '), 'bevel         ' + S.bevel,
             'oxide cover   ' + S.cover.join(' .. '), 'patch         ' + S.patchTh.join(' .. ') + ' x' + S.patchAmt, 'pits          x' + S.pitAmt,
-            'crack speed   ' + CRACK_V + ' uv/s per wave-speed unit', 'crack length  ' + CRACK_L0 + ' uv x sqrt(size)',
-            'core width    ' + CORE_W + ' uv (tip x' + TIP_W + ')', 'erosion band  ' + BAND_W + ' uv half-width',
+            'crack speed   ' + CRACK_V + ' uv/s per wave-speed unit', 'crack length  ' + CRACK_L0 + ' uv x sqrt(size/0.5), capped by Spread',
+            'core width    ' + CORE_W0 + ' .. ' + CORE_W1 + ' uv by size (tip x' + TIP_W + ')',
+            'rays          ' + RAY_TAB.map((r) => r[1] + '@' + r[0]).join(' '), 'generations   (rings-1) x (0..2.2 by size)',
+            'erosion band  ' + BAND_K + ' x core half-width + ' + BAND_MIN + ' uv', 'spalling      size >= ' + FRAG_S0 + ': 2..8 plates, lift 0.006-0.017 uv',
             'defaults      reflect ' + S.fresnelBase + ', refract ' + S.refract + ', idle ' + S.idle + ', time ' + S.time].join('\n');
   }
   const L = liquid;
@@ -1401,6 +1743,21 @@ $('json').addEventListener('click', (e) => e.target.select());
 $('bPlay').addEventListener('click', () => { playing = !playing; $('bPlay').textContent = playing ? 'Pause' : 'Play'; });
 $('bRestart').addEventListener('click', () => { restart(); playing = true; $('bPlay').textContent = 'Pause'; });
 $('bNext').addEventListener('click', nextEvent);
+// Random 45 s: a fresh piece (like Restart), then seeded random drops for exactly 45 s of sim time. Nothing else is changed.
+function startRandom(seed) {
+  restart();
+  randomSeed = seed; randomList = randomEvents(seed); randomIdx = 0; randomOn = true; randomDone = false;
+  autoEvents = false; $('tAuto').checked = false;
+  playing = true; $('bPlay').textContent = 'Pause';
+  syncValues();
+}
+function randomLabel() {
+  if (randomOn) return Math.max(0, RANDOM_LEN - stepCount * DT).toFixed(1) + ' s left';
+  return randomDone ? 'done' : 'idle';
+}
+$('bRand').addEventListener('click', () => startRandom(seedVal()));
+$('nSeed').addEventListener('input', syncValues);
+$('nSeed').addEventListener('change', () => { $('nSeed').value = seedVal(); syncValues(); });
 $('bProc').addEventListener('click', () => { useProcedural(); restart(); });
 
 function loadImage(file) {
@@ -1426,6 +1783,8 @@ $('fFiles').addEventListener('change', async (e) => {
 // Console hook for a real events.json (array of {t, pitch, vel}).
 window.XANADU = {
   get EVENTS() { return EVENTS; },
+  randomEvents,
+  startRandom,
   params,
   setEvents(list) { EVENTS = list.map(dropFromEvent).sort((a, b) => a.t - b.t); restart(); },
   setAuto,
@@ -1448,6 +1807,13 @@ try {
   // debug: #seek=NN fast-forwards NN seconds of sim time before the first frame
   // debug: #auto=1 switches auto events on before the seek
   if (/[#?&]auto=1/.test(location.href)) setAuto(true);
+  // debug: #size=NN sets the Drop size slider; #drop=NN sets it and fires one drop of that size at the centre at t = 0.5 s
+  { const zm = /[#?&]size=([0-9.]+)/.exec(location.href); if (zm) { $('sSize').value = zm[1]; $('sSize').dispatchEvent(new Event('input')); } }
+  { const dm = /[#?&]drop=([0-9.]+)/.exec(location.href);
+    if (dm) { $('sSize').value = dm[1]; $('sSize').dispatchEvent(new Event('input')); testDropSpec = 0.5; testDrop = { t: 0.5 }; } }
+  // debug: #random=1&seed=N starts Random 45 s with that seed before the seek
+  { const sd = /[#?&]seed=([0-9]+)/.exec(location.href); if (sd) $('nSeed').value = sd[1];
+    if (/[#?&]random=1/.test(location.href)) startRandom(seedVal()); }
   const m = /[#?&]seek=([0-9.]+)/.exec(location.href);
   if (m) { const n = Math.round(parseFloat(m[1]) * 60); for (let i = 0; i < n; i++) substep(); }
   requestAnimationFrame((t) => { last = t; requestAnimationFrame(frame); });
