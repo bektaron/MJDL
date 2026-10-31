@@ -129,6 +129,13 @@ A soft, liquid-metal surface, seen from above. It reads like polished or brushed
 
 Open from this note (not yet ruled): which piece this is for — one of the two or both; whether the drop is the note's attack (hand-placed marker) or derived from amplitude (A§5B argues hand-placed for these quiet pieces); whether the profile is a still image (Photoshop/Midjourney) displaced by a ripple map, or 3D (liquid simulation) — the first is the Photoshop-native path, the second is the 3D path; what reflectance and ripple damping keep "half-seen" from becoming "unreadable".
 
+Realisation notes (advisor, 31 Oct 2026, after Bekir's "ok" to a prototype):
+- *Drops per piece.* *Für Alina* is sparse (~40 notes/min): every note can be a drop. *Spiegel im Spiegel* has a continuous piano triplet (~3 notes/s, ~1,600 in 9 min): drops for every note would be rain. There the **violin** notes are the drops; the piano triplets become the surface's own faint ripple. ☁ Ruling needed.
+- *"Changes a part of her".* A ripple alone distorts; it does not change. Mechanism: a stack of N variants of the same profile (same seed, small differences); each drop reveals a lower variant inside its radius. When the surface settles, that region is now another variant. Unreachability comes from this: every note makes her slightly someone else.
+- *Pipeline:* events.json (onset detection or hand markers; pitch → drop position, velocity → size) → 2D wave heightfield (damping = the "half-seen" dial) → profile texture refracted by the slope, 20–30 % Fresnel reflection, metallic shading → variant-reveal mask per drop → offline render 4K/25 fps → audio laid in Resolve.
+- *Tools:* WebGL prototype first (one evening; motion and damping felt on the phone), Blender (Dynamic Paint Waves + Cycles) for the final — real reflections, script places drops from events.json. After Effects is weak here (hundreds of drops, no metallic reflection); A§5B's AE recommendation predates this design.
+- *Prototype:* `part-clip/proto/` — WebGL, first 60 s, synthetic Für Alina-like event list, placeholder profile with an image-upload slot for Bekir's own frames. Private study; independent of the UE answer.
+
 ---
 
 ## 11. What the research changes, and how it is integrated (added 31 Oct 2026)
