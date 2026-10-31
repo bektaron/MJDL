@@ -38,6 +38,16 @@ input[type=range]{width:100%;margin:0;height:30px;accent-color:#9aa6b8;backgroun
 input[type=file]{display:none}
 .note{color:var(--dim);font-size:12px;margin:2px 0 12px}
 footer{padding:14px 0 0;color:var(--dim);font-size:11.5px;letter-spacing:.03em;text-align:center}
+.row.liq{flex-wrap:wrap}
+.row.liq button{flex:1 1 calc(50% - 4px)}
+button[aria-pressed=true]{background:#2a2f38;border-color:#8a96aa;color:#fff}
+.tog{display:flex;align-items:center;gap:10px;min-height:44px;margin:0 0 6px;font-size:15px;color:var(--fg);cursor:pointer}
+.tog input{width:22px;height:22px;margin:0;accent-color:#9aa6b8;flex:none}
+.dimtxt{color:var(--dim);font-size:12px}
+details.sub{border-bottom:0;margin:2px 0 4px}
+details.sub summary{font-size:12px;padding:8px 0;color:var(--dim);letter-spacing:.06em}
+pre#advNum{margin:0 0 8px;padding:10px;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--fg);
+  background:#101114;border:1px solid #30343a;border-radius:8px;white-space:pre-wrap;user-select:text;-webkit-user-select:text}
 @media (min-aspect-ratio:1/1){
   .app{flex-direction:row;align-items:flex-start;justify-content:center}
   .stage{width:min(100vh,calc(100vw - 340px));width:min(100svh,calc(100vw - 340px));margin:0}
@@ -60,12 +70,23 @@ footer{padding:14px 0 0;color:var(--dim);font-size:11.5px;letter-spacing:.03em;t
         <button id="bRestart" type="button">Restart</button>
         <button id="bNext" type="button">Next event</button>
       </div>
-      <div class="grp">Presets</div>
-      <div class="row">
-        <button class="sm" id="pStill" type="button" data-preset="still">Still water</button>
-        <button class="sm" id="pMerc" type="button" data-preset="mercury">Mercury</button>
-        <button class="sm" id="pDef" type="button" data-preset="def">Default</button>
+      <label class="tog" for="tAuto"><input id="tAuto" type="checkbox"> Auto events <span class="dimtxt">(synthetic drops; off = tap only)</span></label>
+      <div class="grp">Liquid</div>
+      <div class="row liq">
+        <button class="sm" type="button" data-liquid="mercury" aria-pressed="false">Mercury</button>
+        <button class="sm" type="button" data-liquid="gallium" aria-pressed="false">Gallium</button>
+        <button class="sm" type="button" data-liquid="silver" aria-pressed="false">Molten silver</button>
+        <button class="sm" type="button" data-liquid="oil" aria-pressed="false">Oil-slick steel</button>
       </div>
+      <div class="grp">Override (a liquid change resets these)</div>
+      <div class="ctl"><label for="sReflect">Reflect</label><input id="sReflect" type="range" min="0" max="1" step="0.01" value="0.55"><output id="oReflect"></output></div>
+      <div class="ctl"><label for="sRefract">Refract</label><input id="sRefract" type="range" min="0" max="3" step="0.05" value="0.9"><output id="oRefract"></output></div>
+      <div class="ctl"><label for="sIdle">Idle ripple</label><input id="sIdle" type="range" min="0" max="0.02" step="0.0005" value="0.004"><output id="oIdle"></output></div>
+      <div class="ctl"><label for="sTime">Time scale</label><input id="sTime" type="range" min="0.25" max="4" step="0.05" value="1"><output id="oTime"></output></div>
+      <details class="sub" id="adv">
+        <summary>Advanced: liquid numbers</summary>
+        <pre id="advNum" aria-label="Active liquid parameters, read only"></pre>
+      </details>
       <div class="grp">Drop (tap the surface to drop)</div>
       <div class="ctl"><label for="sSize">Drop size</label><input id="sSize" type="range" min="0.05" max="2" step="0.05" value="0.5"><output id="oSize"></output></div>
       <div class="ctl"><label for="sAttack">Attack (s)</label><input id="sAttack" type="range" min="0" max="1.5" step="0.05" value="0.25"><output id="oAttack"></output></div>
@@ -77,22 +98,19 @@ footer{padding:14px 0 0;color:var(--dim);font-size:11.5px;letter-spacing:.03em;t
       <div class="ctl"><label for="sSpread">Spread</label><input id="sSpread" type="range" min="0.1" max="2" step="0.05" value="0.6"><output id="oSpread"></output></div>
       <div class="ctl"><label for="sLag">Reveal lag (s)</label><input id="sLag" type="range" min="0" max="3" step="0.05" value="0.6"><output id="oLag"></output></div>
       <p class="note" id="wnote"></p>
-      <div class="grp">Surface</div>
-      <div class="ctl"><label for="sReflect">Reflect</label><input id="sReflect" type="range" min="0" max="1" step="0.01" value="0.25"><output id="oReflect"></output></div>
-      <div class="ctl"><label for="sRefract">Refract</label><input id="sRefract" type="range" min="0" max="3" step="0.05" value="0.8"><output id="oRefract"></output></div>
-      <div class="ctl"><label for="sIdle">Idle ripple</label><input id="sIdle" type="range" min="0" max="0.02" step="0.0005" value="0.004"><output id="oIdle"></output></div>
-      <div class="ctl"><label for="sTime">Time scale</label><input id="sTime" type="range" min="0.25" max="4" step="0.05" value="1"><output id="oTime"></output></div>
+      <div class="grp">Erosion</div>
+      <div class="ctl"><label for="sSoft">Erode softness</label><input id="sSoft" type="range" min="0" max="1" step="0.01" value="0.5"><output id="oSoft"></output></div>
       <div class="row" style="margin-top:8px">
         <label class="filebtn" for="fFiles">Upload 1–4 images</label>
         <input id="fFiles" type="file" accept="image/*" multiple>
         <button id="bProc" type="button">Procedural</button>
       </div>
-      <p class="note" id="vinfo">Variants: 4 procedural placeholders.</p>
+      <p class="note" id="vinfo">Variants: 4 procedural placeholders, then white.</p>
     </details>
     <details open>
       <summary>Values</summary>
       <p class="note">Copy these values into the project file.</p>
-      <textarea id="json" readonly rows="15" spellcheck="false" aria-label="Current parameter set as JSON"></textarea>
+      <textarea id="json" readonly rows="22" spellcheck="false" aria-label="Current parameter set as JSON"></textarea>
     </details>
     <footer>Pärt clip · prototype · 31 Oct 2026 · private study · no audio</footer>
   </div>
@@ -114,7 +132,9 @@ const ITER_MAX = 6;         // max wave iterations per substep (chosen from wave
 const CFL      = 0.7;       // max cells travelled per iteration; C2 = CFL^2 = 0.49 < 0.5 (2D stability limit)
 const MAXSTEPS = 32;        // catch-up cap per frame (sim slows instead of freezing)
 const DURATION = 60;        // length of the synthetic event list (s)
-const FOLLOW   = 6.0;       // shown phase follows the target at most this fast (variants/s); the lag itself is the revealLag slider
+const FOLLOW   = 6.0;       // shown erosion value follows the target at most this fast (stack positions/s); the lag itself is the revealLag slider
+const EDGE_K = 1.0;         // strength of the slope-driven wear-through bevel
+const ERODE_GAIN = 0.5;     // erosion at the drop centre = ERODE_GAIN * drop-size ratio, clamped to 0.05..1 stack positions (so one default drop is half a layer)
 const MAXD     = 16;        // drops kept alive at once (impulse, spread and reveal are per drop)
 const SIM_LIFE = 20;        // seconds a drop stays in the list (spread reference + reveal window)
 const SPREAD_OFF = 2.0;     // spread slider maximum = off
@@ -339,30 +359,49 @@ void main(){
   float rr = dmin / uRs;
   float spr = (dmin < 100.0) ? uSpread * rr * rr : 0.0;
   float damp = min(uDamp + (1.0 - smoothstep(0.0, 0.10, edge)) * uEdge + spr, 0.9);
+  // uDamp already includes the liquid's viscosity (extra velocity damping)
   float hn = s.x + (s.x - s.y) * (1.0 - damp) + uC2 * lap;
   o = vec4(hn + a, s.x + a, 0.0, 1.0);
 }`;
 
-// Variant mask. Each texel keeps TWO phases as (cos, sin) pairs: target (zw of previous pass
-// kept in .xy) and shown (.zw). Phase p in [0,N): integer part = variant index.
-// Encoding as an angle makes the texture safely bilinear-filterable across the wrap.
+// Surface tension: one pass per substep, after the wave iterations. Blends the height (and its history,
+// so the velocity is not touched) toward the 4-neighbour mean:  h += T * lap(h).  Fine ripples have a large
+// Laplacian and are rounded off, long waves barely change, the wave speed is unchanged. A post-filter with
+// |1 - 8T| <= 1 cannot destabilise the leapfrog step (the in-step version would, at high wave speed).
+const FS_TENS = `#version 300 es
+precision highp float; precision highp sampler2D;
+uniform sampler2D uState; uniform float uSize, uTens;
+out vec4 o;
+void main(){
+  ivec2 ip = ivec2(gl_FragCoord.xy); ivec2 mx = ivec2(int(uSize) - 1);
+  vec2 s  = texelFetch(uState, ip, 0).xy;
+  vec2 sl = texelFetch(uState, clamp(ip + ivec2(-1, 0), ivec2(0), mx), 0).xy;
+  vec2 sr = texelFetch(uState, clamp(ip + ivec2( 1, 0), ivec2(0), mx), 0).xy;
+  vec2 sd = texelFetch(uState, clamp(ip + ivec2( 0,-1), ivec2(0), mx), 0).xy;
+  vec2 su = texelFetch(uState, clamp(ip + ivec2( 0, 1), ivec2(0), mx), 0).xy;
+  o = vec4(s + uTens * (sl + sr + sd + su - 4.0 * s), 0.0, 1.0);
+}`;
+
+// Erosion mask. Each texel keeps TWO continuous values (not an index): .x = target, .y = shown.
+// Value p in [0, uMax]: p = 0 is the top variant, p = k the k-th variant down, p = uMax (= number of
+// uploaded images) is the white base. Stored in a float texture, read with texelFetch (no filtering needed).
 const FS_MASK = `#version 300 es
 precision highp float; precision highp sampler2D;
 #define MAXD ${MAXD}
 uniform sampler2D uIn;
 uniform vec4 uMa[MAXD];        // x, y (uv), reveal radius, active
 uniform vec4 uMb[MAXD];        // age at step start, age at step end, reveal duration, wave speed (uv/s)
-uniform float uN, uStep, uSize;
+uniform vec4 uMc[MAXD];        // erosion amount at the centre, feather start (fraction of radius)
+uniform float uMax, uStep, uSize;
 out vec4 o;
 void main(){
   vec4 m = texelFetch(uIn, ivec2(gl_FragCoord.xy), 0);
-  float k = 6.28318531 / uN;
-  float pt = mod(atan(m.y, m.x) / k + uN, uN);
-  float ps = mod(atan(m.w, m.z) / k + uN, uN);
-  // Each drop advances the target by an INCREMENT of  feather(r) * (P(age1) - P(age0)),
+  float pt = m.x, ps = m.y;
+  // Each drop advances the target by an INCREMENT of  amount * feather(r) * (P(age1) - P(age0)),
   // P = smoothstep of (age - r/c) / duration: nothing at the touch point at age 0, the change
   // starts at a texel when the ring front arrives (r/c) and takes the reveal duration to settle.
-  // The increments telescope, so the full advance is exactly feather(r) (one variant at most).
+  // The increments telescope, so the full advance is exactly amount * feather(r).
+  // feather(r) = 1 - smoothstep(f0 * R, R, r): a wide radial ramp, f0 set by erodeSoftness.
   vec2 uv = gl_FragCoord.xy / uSize;
   float adv = 0.0;
   for (int i = 0; i < MAXD; i++) {
@@ -371,17 +410,15 @@ void main(){
     float r = distance(uv, a.xy);
     if (r >= a.z) continue;
     vec4 b = uMb[i];
+    vec4 c = uMc[i];
     float tr = r / b.w;
     float p0 = smoothstep(0.0, 1.0, clamp((b.x - tr) / b.z, 0.0, 1.0));
     float p1 = smoothstep(0.0, 1.0, clamp((b.y - tr) / b.z, 0.0, 1.0));
-    adv += (1.0 - smoothstep(0.65 * a.z, a.z, r)) * (p1 - p0);
+    adv += c.x * (1.0 - smoothstep(c.y * a.z, a.z, r)) * (p1 - p0);
   }
-  pt = mod(pt + adv, uN);
-  float fwd = mod(pt - ps + uN, uN);
-  if (fwd > uN - 0.01) fwd = 0.0;
-  float st = min(fwd, uStep);
-  ps = (fwd - st < 0.003) ? pt : mod(ps + st, uN);
-  o = vec4(cos(pt * k), sin(pt * k), cos(ps * k), sin(ps * k));
+  pt = min(pt + adv, uMax);                         // the stack ends at white: more drops change nothing
+  ps = min(ps + min(pt - ps, uStep), pt);           // shown value chases the target (monotone, never wraps)
+  o = vec4(pt, ps, 0.0, 1.0);
 }`;
 
 // Derived field for display: xy = slope per texel, z = height. Half-float, linearly filtered.
@@ -403,9 +440,13 @@ const FS_DISPLAY = `#version 300 es
 precision highp float; precision highp sampler2D; precision highp sampler2DArray;
 uniform sampler2D uDerived, uMask;
 uniform sampler2DArray uVar;
-uniform float uReflect, uRefract, uIdle, uTime, uN;
+uniform float uReflect, uRefract, uIdle, uTime, uNImg, uGrid;
+uniform float uFPow, uSpecPow, uBrushStr, uBrushDir, uIrid, uIdleScale, uIdleRate, uEdgeK;
+uniform vec3 uTint;
 uniform vec4 uW[4];            // idle waves: k.xy, omega, phase (seeded in JS)
 in vec2 vUv; out vec4 outC;
+
+const vec3 WHITE = vec3(0.97, 0.935, 0.87);   // base below the last variant: slightly warm white (display-referred)
 
 float hash12(vec2 p){ vec3 q = fract(vec3(p.xyx) * .1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
 float vnoise(vec2 p){
@@ -413,6 +454,25 @@ float vnoise(vec2 p){
   return mix(mix(hash12(i), hash12(i + vec2(1, 0)), f.x), mix(hash12(i + vec2(0, 1)), hash12(i + vec2(1, 1)), f.x), f.y);
 }
 float band(float x, float w){ return 1.0 - smoothstep(0.0, w, abs(x)); }
+
+// Shown erosion value, bilinear from the float mask (texelFetch, so no float-linear extension needed).
+float maskAt(vec2 uv){
+  vec2 q = uv * uGrid - 0.5;
+  vec2 fl = floor(q), f = q - fl;
+  ivec2 i0 = ivec2(fl), mx = ivec2(int(uGrid) - 1);
+  float a = texelFetch(uMask, clamp(i0, ivec2(0), mx), 0).y;
+  float b = texelFetch(uMask, clamp(i0 + ivec2(1, 0), ivec2(0), mx), 0).y;
+  float c = texelFetch(uMask, clamp(i0 + ivec2(0, 1), ivec2(0), mx), 0).y;
+  float d = texelFetch(uMask, clamp(i0 + ivec2(1, 1), ivec2(0), mx), 0).y;
+  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+// Layer i of the stack: uploaded/procedural variant, or the white base past the last one.
+// The array is always sampled (uniform control flow), the base is selected afterwards.
+vec3 layerCol(float i, vec2 iuv){
+  vec3 t = texture(uVar, vec3(iuv, min(i, uNImg - 1.0))).rgb;
+  return (i > uNImg - 0.5) ? WHITE : t;
+}
 
 // Procedural studio environment: soft gradient sky + a few blurred highlight bands.
 vec3 envMap(vec2 e){
@@ -425,44 +485,53 @@ vec3 envMap(vec2 e){
 
 void main(){
   vec2 uv = vUv;
-  // 1. surface slope: simulated field + seeded idle ripple
-  vec2 g = texture(uDerived, uv).xy;
+  // 1. surface slope: simulated field + seeded idle ripple (liquid scales its size and rate)
+  vec3 dv = texture(uDerived, uv).xyz;
+  vec2 g = dv.xy;
   for (int i = 0; i < 4; i++) {
-    vec2 k = uW[i].xy;
-    g += normalize(k) * cos(dot(k, uv) + uW[i].z * uTime + uW[i].w) * uIdle * 0.5;
+    vec2 k = uW[i].xy * uIdleScale;
+    g += normalize(k) * cos(dot(k, uv) + uW[i].z * uIdleRate * uTime + uW[i].w) * uIdle * 0.5;
   }
   // 2. refraction: the profile texture is read at a slope-shifted position
   vec2 suv = clamp(uv + g * uRefract * 0.7, 0.003, 0.997);
-  // 3. variant selection from the mask (shown phase), feathered blend of two layers
-  vec4 M = texture(uMask, suv);
-  float k = 6.28318531 / uN;
-  float p = atan(M.w, M.z) / k; if (p < 0.0) p += uN;
-  float fi = floor(p); float f = p - fi;
-  if (fi > uN - 0.5) fi = 0.0;
-  float fb = (fi + 1.0 > uN - 0.5) ? 0.0 : fi + 1.0;
-  float m = smoothstep(0.3, 0.7, f);
+  // 3. erosion value -> two adjacent stack layers, smooth crossfade
+  float e = 1.0 / uGrid;
+  float p = clamp(maskAt(suv), 0.0, uNImg);
+  float fi = floor(p), f = p - fi;
+  float fb = min(fi + 1.0, uNImg);
+  float m = smoothstep(0.12, 0.88, f);
   vec2 iuv = vec2(suv.x, 1.0 - suv.y);
-  vec3 A = texture(uVar, vec3(iuv, fi)).rgb;
-  vec3 B = texture(uVar, vec3(iuv, fb)).rgb;
-  vec3 alb = mix(A, B, m);
+  vec3 alb = mix(layerCol(fi, iuv), layerCol(fb, iuv), m);
+  // wear-through edge: where the value is mid-transition the surface gets a soft bevel that
+  // slopes down toward the eroded side (gradient of the erosion value), so it reads as worn metal
+  vec2 gp = 0.5 * vec2(maskAt(suv + vec2(e, 0.0)) - maskAt(suv - vec2(e, 0.0)),
+                       maskAt(suv + vec2(0.0, e)) - maskAt(suv - vec2(0.0, e)));
+  float bump = 4.0 * f * (1.0 - f);
+  g -= gp * uEdgeK * bump;
   alb *= alb;                                     // to linear (approx.)
-  alb *= vec3(0.93, 0.96, 1.0) * 0.9;             // seen through a thin film: slightly cooler, darker
+  alb *= vec3(0.93, 0.96, 1.0) * 0.9 * mix(vec3(1.0), uTint, 0.5);   // seen through a thin film of the liquid
   // 4. lighting of the image from the heightfield normals
   vec3 nL = normalize(vec3(-g * 6.0, 1.0));
   vec3 L = normalize(vec3(-0.5, 0.6, 0.65));
   float dif = 0.55 + 0.75 * max(dot(nL, L), 0.0);
-  // 5. metal: Fresnel reflection of the environment, F0 = uReflect
+  // 5. metal: Fresnel reflection of the environment, F0 = uReflect, exponent from the liquid
   vec3 nE = normalize(vec3(-g * 16.0, 1.0));
   vec3 V = normalize(vec3(0.5 - uv, 1.7));
   vec3 R = reflect(-V, nE);
   float cv = max(dot(nE, V), 0.0);
-  float F = uReflect + (1.0 - uReflect) * pow(1.0 - cv, 5.0);
-  vec3 en = envMap(R.xy / max(R.z, 0.15) * 1.4);
-  float brush = vnoise(vec2(uv.x * 5.0, uv.y * 300.0)) - 0.5;   // brushed streaks
-  en *= 1.0 + brush * 0.07;
+  float F = uReflect + (1.0 - uReflect) * pow(1.0 - cv, uFPow);
+  // faint thin-film iridescence carried by the Fresnel term (uIrid = 0 for most liquids)
+  vec3 film = 0.5 + 0.5 * cos(6.28318531 * (vec3(0.0, 0.33, 0.67) + (1.0 - cv) * 3.0 + dv.z * 2.0));
+  vec3 Fc = vec3(F) * (1.0 + uIrid * (film - 0.5) * 2.0);
+  vec3 en = envMap(R.xy / max(R.z, 0.15) * 1.4) * uTint;
+  // brushed streaks: direction and strength from the liquid
+  float ca = cos(uBrushDir), sa = sin(uBrushDir);
+  vec2 bu = vec2(ca * uv.x + sa * uv.y, -sa * uv.x + ca * uv.y);
+  float brush = (vnoise(vec2(bu.x * 5.0, bu.y * 300.0)) - 0.5) + 0.6 * (vnoise(vec2(bu.x * 9.0, bu.y * 130.0)) - 0.5);
+  en *= 1.0 + brush * uBrushStr;
   vec3 H = normalize(L + V);
-  float sp = pow(max(dot(nE, H), 0.0), 220.0);
-  vec3 col = alb * dif * (1.0 - F) + en * F + vec3(sp) * (0.25 + 0.6 * uReflect);
+  float sp = pow(max(dot(nE, H), 0.0), uSpecPow) * max(1.0 + brush * uBrushStr * 4.0, 0.0);
+  vec3 col = alb * dif * (1.0 - Fc) + en * Fc + sp * (0.25 + 0.6 * uReflect) * mix(vec3(1.0), uTint, 0.5);
   col = sqrt(max(col, 0.0));
   col += (hash12(gl_FragCoord.xy) - 0.5) / 255.0;                   // dither
   outC = vec4(col, 1.0);
@@ -483,12 +552,14 @@ function makeProg(fs, names) {
   return { p, u };
 }
 
-let progSim, progMask, progDerive, progDisplay;
+let progSim, progTens, progMask, progDerive, progDisplay;
 try {
   progSim = makeProg(FS_SIM, ['uState', 'uC2', 'uDamp', 'uEdge', 'uSpread', 'uRs', 'uSize', 'uDa', 'uDb']);
-  progMask = makeProg(FS_MASK, ['uIn', 'uMa', 'uMb', 'uN', 'uStep', 'uSize']);
+  progTens = makeProg(FS_TENS, ['uState', 'uSize', 'uTens']);
+  progMask = makeProg(FS_MASK, ['uIn', 'uMa', 'uMb', 'uMc', 'uMax', 'uStep', 'uSize']);
   progDerive = makeProg(FS_DERIVE, ['uState', 'uSize']);
-  progDisplay = makeProg(FS_DISPLAY, ['uDerived', 'uMask', 'uVar', 'uReflect', 'uRefract', 'uIdle', 'uTime', 'uN', 'uW']);
+  progDisplay = makeProg(FS_DISPLAY, ['uDerived', 'uMask', 'uVar', 'uReflect', 'uRefract', 'uIdle', 'uTime', 'uNImg', 'uGrid', 'uW',
+    'uFPow', 'uSpecPow', 'uBrushStr', 'uBrushDir', 'uIrid', 'uIdleScale', 'uIdleRate', 'uEdgeK', 'uTint']);
 } catch (err) { fail(String(err.message || err)); return; }
 
 const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
@@ -513,8 +584,12 @@ function makePair(internal, type, filter) {
 }
 
 let state = extF ? makePair(gl.RGBA32F, gl.FLOAT, gl.NEAREST) : null;
-if (!state || !state.ok) state = makePair(gl.RGBA16F, gl.HALF_FLOAT, gl.NEAREST);
-const mask = makePair(gl.RGBA16F, gl.HALF_FLOAT, gl.LINEAR);
+const f32 = !!(state && state.ok);
+if (!f32) state = makePair(gl.RGBA16F, gl.HALF_FLOAT, gl.NEAREST);
+// erosion mask: continuous values accumulate small increments, so keep it 32-bit when available
+// (read with texelFetch + manual bilinear in the display shader, so no float-linear extension is needed)
+let mask = f32 ? makePair(gl.RGBA32F, gl.FLOAT, gl.NEAREST) : null;
+if (!mask || !mask.ok) mask = makePair(gl.RGBA16F, gl.HALF_FLOAT, gl.NEAREST);
 const derived = makeTarget(GRID, gl.RGBA16F, gl.HALF_FLOAT, gl.LINEAR);
 if (!state.ok || !mask.ok || !derived.ok) { fail('Float framebuffers are incomplete on this device.'); return; }
 
@@ -525,9 +600,8 @@ let proceduralMode = true;
 function setVariants(canvases) {
   const N = canvases.length;
   const S = VAR_RES, layer = S * S * 4, data = new Uint8Array(layer * 4);
-  for (let i = 0; i < 4; i++) {
-    const c = canvases[i % N];
-    data.set(c.getContext('2d').getImageData(0, 0, S, S).data, i * layer);
+  for (let i = 0; i < N && i < 4; i++) {            // layers past N stay empty: the stack ends in white, no wrapping
+    data.set(canvases[i].getContext('2d').getImageData(0, 0, S, S).data, i * layer);
   }
   gl.bindTexture(gl.TEXTURE_2D_ARRAY, varTex);
   gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
@@ -537,12 +611,12 @@ function setVariants(canvases) {
   gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  variantN = N;
+  variantN = Math.min(N, 4);
 }
 function useProcedural() {
   setVariants([0, 1, 2, 3].map(makeProceduralVariant));
   proceduralMode = true;
-  $('vinfo').textContent = 'Variants: 4 procedural placeholders.';
+  $('vinfo').textContent = 'Variants: 4 procedural placeholders, then white.';
 }
 
 // Seeded idle ripple waves (k.xy in uv radians, omega, phase)
@@ -559,17 +633,40 @@ const idleW = (() => {
 /* ======================================================================
    Simulation (fixed 1/60 s substeps) and rendering
    ====================================================================== */
-const PRESETS = {
-  def:     { size: 0.5,  attack: 0.25, wave: 0.16, rings: 2, speed: 0.30, damp: 0.008, spread: 0.6,  lag: 0.6, reflect: 0.25, refract: 0.8, idle: 0.004, time: 1 },
-  still:   { size: 0.7,  attack: 1.2,  wave: 0.20, rings: 1, speed: 0.12, damp: 0.006, spread: 0.45, lag: 1.8, reflect: 0.15, refract: 0.5, idle: 0.002, time: 1 },
-  mercury: { size: 0.4,  attack: 0.05, wave: 0.05, rings: 4, speed: 0.65, damp: 0.003, spread: 1.4,  lag: 0.3, reflect: 0.70, refract: 1.2, idle: 0.004, time: 1 }
+// The artist's DROP / WAVE / EROSION values. No liquid ever writes these.
+const ARTIST = { size: 0.5, attack: 0.25, wave: 0.16, rings: 2, speed: 0.30, damp: 0.008, spread: 0.6, lag: 0.6, soft: 0.5 };
+
+// LIQUIDS: material and medium only.
+//   tension      surface tension: h += tension * laplacian(h) once per substep (rounds off fine ripples, max 0.25)
+//   visc         viscosity: extra velocity damping per iteration (combined with the artist's `damping`)
+//   fresnelBase / fresnelPow   reflectance curve  F = base + (1 - base) (1 - cos)^pow ; base is the default of the REFLECT override
+//   specPow      specular tightness (exponent)
+//   brushStr / brushDir        brushed streaks: strength, direction (rad)
+//   tint         base tint (multiplies reflection, half-strength on the image seen through)
+//   irid         faint thin-film colour carried by the Fresnel term
+//   idleAmp / idleScale / idleRate   idle-ripple character: amplitude, spatial scale (<1 = longer), speed multipliers
+//   reflect, refract, idle, time     defaults of the four override sliders
+const LIQUIDS = {
+  mercury: { name: 'Mercury',         tension: 0.150, visc: 0.0004, fresnelBase: 0.55, fresnelPow: 4.0, specPow: 520,
+             brushStr: 0.010, brushDir: 0.00, tint: [0.93, 0.98, 1.07], irid: 0.00,
+             idleAmp: 0.8, idleScale: 1.3, idleRate: 1.2, refract: 0.9, idle: 0.0040, time: 1 },
+  gallium: { name: 'Gallium',         tension: 0.100, visc: 0.0020, fresnelBase: 0.46, fresnelPow: 5.0, specPow: 150,
+             brushStr: 0.040, brushDir: 0.35, tint: [0.88, 0.93, 1.00], irid: 0.00,
+             idleAmp: 1.0, idleScale: 1.0, idleRate: 1.0, refract: 0.8, idle: 0.0040, time: 1 },
+  silver:  { name: 'Molten silver',   tension: 0.055, visc: 0.0050, fresnelBase: 0.42, fresnelPow: 4.5, specPow: 110,
+             brushStr: 0.130, brushDir: 0.00, tint: [1.07, 0.97, 0.82], irid: 0.00,
+             idleAmp: 0.9, idleScale: 0.8, idleRate: 0.45, refract: 0.7, idle: 0.0035, time: 1 },
+  oil:     { name: 'Oil-slick steel', tension: 0.015, visc: 0.0110, fresnelBase: 0.30, fresnelPow: 3.0, specPow: 70,
+             brushStr: 0.240, brushDir: 1.15, tint: [0.40, 0.43, 0.48], irid: 0.32,
+             idleAmp: 1.5, idleScale: 0.5, idleRate: 0.35, refract: 0.6, idle: 0.0050, time: 1 }
 };
-const params = Object.assign({}, PRESETS.def);
-let playing = true, stepCount = 0, acc = 0, evIdx = 0, evCount = 0;
+let liquidKey = 'mercury', liquid = LIQUIDS.mercury;
+const params = Object.assign({ reflect: liquid.fresnelBase, refract: liquid.refract, idle: liquid.idle, time: liquid.time }, ARTIST);
+let playing = true, autoEvents = false, stepCount = 0, acc = 0, evIdx = 0, evCount = 0;
 let manualQ = [], manualN = 0, tapN = 0;
 let drops = [];
 const aDa = new Float32Array(MAXD * 4), aDb = new Float32Array(MAXD), zeroDb = new Float32Array(MAXD);
-const aMa = new Float32Array(MAXD * 4), aMb = new Float32Array(MAXD * 4);
+const aMa = new Float32Array(MAXD * 4), aMb = new Float32Array(MAXD * 4), aMc = new Float32Array(MAXD * 4);
 
 // Wave speed (uv/s) -> iterations per substep n and C2 per iteration, clamped to the stability limit.
 function simState() {
@@ -580,9 +677,15 @@ function simState() {
   // spread: extra damping G*(d/Rs)^2 per iteration; G chosen so a wave travelling Rs loses ~exp(-3)
   const iterPerUv = n / DT / c;
   const G = params.spread >= SPREAD_OFF - 1e-9 ? 0 : Math.min(0.4, 18 / (iterPerUv * params.spread));
+  const dTot = params.damp + liquid.visc - params.damp * liquid.visc;   // artist damping + liquid viscosity
+  const dArt = 1 - Math.pow(1 - params.damp, 2 / n);
+  // velocity damping d keeps the leapfrog stable only while C2 <= (2 - d) / 4 (checkerboard mode): the liquid's
+  // share is trimmed near the top wave speed so viscosity can never destabilise the field
+  const dLiq = Math.min(1 - Math.pow(1 - dTot, 2 / n), Math.max(dArt, 2 - 4 * per * per - 0.004));
   return { n, c, C2: per * per, per, clamped: cps > cpsEff + 1e-9,
-           damp: 1 - Math.pow(1 - params.damp, 2 / n),                // same decay per second whatever n
-           edge: 1 - Math.pow(1 - EDGE_DAMP, 2 / n), G };
+           damp: dLiq,                                                // same decay per second whatever n
+           edge: 1 - Math.pow(1 - EDGE_DAMP, 2 / n), G,
+           tens: liquid.tension };                                    // per substep (post-filter)
 }
 const ramp = (a, att) => (a <= 0 ? 0 : att <= 0 || a >= att ? 1 : (() => { const x = a / att; return x * x * (3 - 2 * x); })());
 
@@ -593,7 +696,9 @@ function makeDrop(ev) {
   const sig = lam * 0.5 * (params.rings + 0.5);                       // envelope width: ringCount windows the cosine
   const st = simState();
   return { x: ev.x, y: 1 - ev.y, t0: stepCount, amp: -DROP_AMP * k, lam, sig, att: params.attack,
-           Rrev: Math.min(0.7, Math.max(0.04, 1.5 * sig)), dur: Math.max(0.04, params.attack + params.lag), c: st.c };
+           Rrev: Math.min(0.7, Math.max(0.04, 1.7 * sig)), dur: Math.max(0.04, params.attack + params.lag), c: st.c,
+           ero: Math.min(1, Math.max(0.05, ERODE_GAIN * k)),                 // partial erosion: bigger drop, more of a layer
+           f0: 1 - (0.06 + 0.94 * clamp01(params.soft)) };                   // feather starts at f0 * radius (0 = from the centre)
 }
 function addDrop(d) {
   drops = drops.filter((q) => (stepCount - q.t0) * DT < SIM_LIFE);
@@ -601,7 +706,7 @@ function addDrop(d) {
   drops.push(d);
 }
 function fillDrops() {
-  aDa.fill(0); aDb.fill(0); aMa.fill(0); aMb.fill(0);
+  aDa.fill(0); aDb.fill(0); aMa.fill(0); aMb.fill(0); aMc.fill(0);
   for (let i = 0; i < drops.length; i++) {
     const d = drops[i];
     const a0 = (stepCount - d.t0) * DT, a1 = (stepCount + 1 - d.t0) * DT;
@@ -612,6 +717,7 @@ function fillDrops() {
     if (a0 < d.dur + d.Rrev / d.c + 0.1) {
       aMa.set([d.x, d.y, d.Rrev, 1], i * 4);
       aMb.set([a0, a1, d.dur, d.c], i * 4);
+      aMc.set([d.ero, d.f0, 0, 0], i * 4);
     }
   }
 }
@@ -635,11 +741,19 @@ function simPass(sp, apply) {
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   state.flip();
 }
+function tensPass(sp) {
+  if (!(sp.tens > 0)) return;
+  const P = pass(progTens, state.nxt, GRID);
+  bindTex(0, gl.TEXTURE_2D, state.cur.tex, P.u.uState);
+  gl.uniform1f(P.u.uSize, GRID); gl.uniform1f(P.u.uTens, sp.tens);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  state.flip();
+}
 function maskPass() {
   const P = pass(progMask, mask.nxt, GRID);
   bindTex(0, gl.TEXTURE_2D, mask.cur.tex, P.u.uIn);
-  gl.uniform4fv(P.u.uMa, aMa); gl.uniform4fv(P.u.uMb, aMb);
-  gl.uniform1f(P.u.uN, variantN); gl.uniform1f(P.u.uStep, FOLLOW * DT); gl.uniform1f(P.u.uSize, GRID);
+  gl.uniform4fv(P.u.uMa, aMa); gl.uniform4fv(P.u.uMb, aMb); gl.uniform4fv(P.u.uMc, aMc);
+  gl.uniform1f(P.u.uMax, variantN); gl.uniform1f(P.u.uStep, FOLLOW * DT); gl.uniform1f(P.u.uSize, GRID);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   mask.flip();
 }
@@ -648,12 +762,13 @@ function substep() {
   const t = stepCount * DT;
   let ev = null;
   if (manualQ.length) { ev = manualQ.shift(); evCount++; }
-  else if (evIdx < EVENTS.length && EVENTS[evIdx].t <= t + 1e-9) { ev = EVENTS[evIdx++]; evCount++; }
+  else if (autoEvents && evIdx < EVENTS.length && EVENTS[evIdx].t <= t + 1e-9) { ev = EVENTS[evIdx++]; evCount++; }
   if (ev) addDrop(makeDrop(ev));
   fillDrops();
   const sp = simState();
   simPass(sp, true);                                   // impulse increment lands in the first iteration only
   for (let i = 1; i < sp.n; i++) simPass(sp, false);
+  tensPass(sp);
   maskPass();
   stepCount++;
 }
@@ -664,7 +779,7 @@ function clearTarget(tg, r, g, b, a) {
 }
 function restart() {
   state.t.forEach((t) => clearTarget(t, 0, 0, 0, 1));
-  mask.t.forEach((t) => clearTarget(t, 1, 0, 1, 0));
+  mask.t.forEach((t) => clearTarget(t, 0, 0, 0, 1));
   clearTarget(derived, 0, 0, 0, 1);
   stepCount = 0; acc = 0; evIdx = 0; evCount = 0; manualQ = []; manualN = 0; tapN = 0; drops = [];
 }
@@ -713,8 +828,13 @@ function render() {
   bindTex(1, gl.TEXTURE_2D, mask.cur.tex, P.u.uMask);
   bindTex(2, gl.TEXTURE_2D_ARRAY, varTex, P.u.uVar);
   gl.uniform1f(P.u.uReflect, params.reflect); gl.uniform1f(P.u.uRefract, params.refract);
-  gl.uniform1f(P.u.uIdle, params.idle); gl.uniform1f(P.u.uTime, stepCount * DT + (playing ? acc : 0));
-  gl.uniform1f(P.u.uN, variantN); gl.uniform4fv(P.u.uW, idleW);
+  gl.uniform1f(P.u.uIdle, params.idle * liquid.idleAmp); gl.uniform1f(P.u.uTime, stepCount * DT + (playing ? acc : 0));
+  gl.uniform1f(P.u.uNImg, variantN); gl.uniform1f(P.u.uGrid, GRID); gl.uniform4fv(P.u.uW, idleW);
+  const L = liquid;
+  gl.uniform1f(P.u.uFPow, L.fresnelPow); gl.uniform1f(P.u.uSpecPow, L.specPow);
+  gl.uniform1f(P.u.uBrushStr, L.brushStr); gl.uniform1f(P.u.uBrushDir, L.brushDir);
+  gl.uniform1f(P.u.uIrid, L.irid); gl.uniform1f(P.u.uIdleScale, L.idleScale); gl.uniform1f(P.u.uIdleRate, L.idleRate);
+  gl.uniform1f(P.u.uEdgeK, EDGE_K); gl.uniform3fv(P.u.uTint, L.tint);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
 }
 
@@ -743,9 +863,9 @@ const fmt = { reflect: (v) => v.toFixed(2), refract: (v) => v.toFixed(2), damp: 
               idle: (v) => v.toFixed(4), size: (v) => v.toFixed(2), time: (v) => v.toFixed(2) + 'x',
               speed: (v) => { const s = simState(); return s.c.toFixed(2) + (s.clamped ? '*' : ''); },
               wave: (v) => v.toFixed(3), rings: (v) => v.toFixed(1), attack: (v) => v.toFixed(2),
-              spread: (v) => (v >= SPREAD_OFF - 1e-9 ? 'off' : v.toFixed(2)), lag: (v) => v.toFixed(2) };
+              spread: (v) => (v >= SPREAD_OFF - 1e-9 ? 'off' : v.toFixed(2)), lag: (v) => v.toFixed(2), soft: (v) => v.toFixed(2) };
 const ids = { size: 'Size', attack: 'Attack', wave: 'Wave', rings: 'Rings', speed: 'Speed', damp: 'Damp', spread: 'Spread',
-              lag: 'Lag', reflect: 'Reflect', refract: 'Refract', idle: 'Idle', time: 'Time' };
+              lag: 'Lag', soft: 'Soft', reflect: 'Reflect', refract: 'Refract', idle: 'Idle', time: 'Time' };
 
 const r3 = (v) => Math.round(v * 1000) / 1000;
 function syncValues() {
@@ -753,9 +873,11 @@ function syncValues() {
   $('wnote').textContent = 'wave speed ' + (st.clamped ? 'set ' + params.speed.toFixed(2) + ', clamped to ' + st.c.toFixed(3) + ' (stability)' : st.c.toFixed(3)) +
     ' uv/s · ' + st.n + ' iter/step · C2 ' + st.C2.toFixed(3) + ' (limit 0.5)';
   $('json').value = JSON.stringify({
+    liquid: liquid.name, autoEvents,
     dropSize: params.size, attack: params.attack, wavelength: params.wave, ringCount: params.rings,
     waveSpeed: params.speed, waveSpeedEffective: r3(st.c), damping: params.damp,
     spread: params.spread >= SPREAD_OFF - 1e-9 ? 'off' : params.spread, revealLag: params.lag,
+    erodeSoftness: params.soft, variants: variantN,
     reflect: params.reflect, refract: params.refract, idle: params.idle, timeScale: params.time
   }, null, 1);
 }
@@ -764,10 +886,36 @@ Object.keys(ids).forEach((k) => {
   const upd = () => { params[k] = parseFloat(s.value); o.textContent = fmt[k](params[k]); syncValues(); };
   s.addEventListener('input', upd); upd();
 });
-document.querySelectorAll('[data-preset]').forEach((b) => b.addEventListener('click', () => {
-  const P = PRESETS[b.dataset.preset];
-  Object.keys(P).forEach((k) => { const s = $('s' + ids[k]); s.value = P[k]; s.dispatchEvent(new Event('input')); });
-}));
+// Liquid row: sets the material/medium (LIQUIDS entry) and resets the four override sliders to its defaults.
+// It never touches the DROP / WAVE / EROSION sliders.
+function advText() {
+  const L = liquid;
+  return ['liquid        ' + L.name,
+          'tension       ' + L.tension, 'viscosity     ' + L.visc,
+          'fresnel base  ' + L.fresnelBase, 'fresnel power ' + L.fresnelPow, 'specular pow  ' + L.specPow,
+          'brush         ' + L.brushStr + ' @ ' + L.brushDir + ' rad',
+          'tint          ' + L.tint.join(', '), 'iridescence   ' + L.irid,
+          'idle amp      x' + L.idleAmp, 'idle scale    x' + L.idleScale, 'idle rate     x' + L.idleRate,
+          'defaults      reflect ' + L.fresnelBase + ', refract ' + L.refract + ', idle ' + L.idle + ', time ' + L.time].join('\n');
+}
+function applyLiquid(key) {
+  liquidKey = key; liquid = LIQUIDS[key];
+  const set = { reflect: liquid.fresnelBase, refract: liquid.refract, idle: liquid.idle, time: liquid.time };
+  Object.keys(set).forEach((k) => { const s = $('s' + ids[k]); s.value = set[k]; s.dispatchEvent(new Event('input')); });
+  document.querySelectorAll('[data-liquid]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.liquid === key ? 'true' : 'false'));
+  $('advNum').textContent = advText();
+  syncValues();
+}
+document.querySelectorAll('[data-liquid]').forEach((b) => b.addEventListener('click', () => applyLiquid(b.dataset.liquid)));
+
+// Auto events: off by default. Switching on skips the events that are already in the past.
+function setAuto(on) {
+  autoEvents = !!on;
+  if (autoEvents) { const t = stepCount * DT; while (evIdx < EVENTS.length && EVENTS[evIdx].t < t - 1e-9) evIdx++; }
+  $('tAuto').checked = autoEvents;
+  syncValues();
+}
+$('tAuto').addEventListener('change', (e) => setAuto(e.target.checked));
 $('json').addEventListener('focus', (e) => e.target.select());
 $('json').addEventListener('click', (e) => e.target.select());
 $('bPlay').addEventListener('click', () => { playing = !playing; $('bPlay').textContent = playing ? 'Pause' : 'Play'; });
@@ -791,7 +939,7 @@ $('fFiles').addEventListener('change', async (e) => {
   e.target.value = '';
   if (!cv.length) return;
   setVariants(cv); proceduralMode = false;
-  $('vinfo').textContent = 'Variants: ' + cv.length + ' uploaded image' + (cv.length > 1 ? 's' : '') + (cv.length < 4 ? ' (stack wraps after ' + cv.length + ')' : '') + '.';
+  $('vinfo').textContent = 'Variants: ' + cv.length + ' uploaded image' + (cv.length > 1 ? 's' : '') + ', then white.';
   restart();
 });
 
@@ -800,6 +948,9 @@ window.XANADU = {
   get EVENTS() { return EVENTS; },
   params,
   setEvents(list) { EVENTS = list.map(dropFromEvent).sort((a, b) => a.t - b.t); restart(); },
+  setAuto,
+  applyLiquid,
+  LIQUIDS,
   RULE
 };
 
@@ -809,7 +960,11 @@ window.XANADU = {
 try {
   useProcedural();
   restart();
+  applyLiquid('mercury');
+  $('tAuto').checked = false;
   // debug: #seek=NN fast-forwards NN seconds of sim time before the first frame
+  // debug: #auto=1 switches auto events on before the seek
+  if (/[#?&]auto=1/.test(location.href)) setAuto(true);
   const m = /[#?&]seek=([0-9.]+)/.exec(location.href);
   if (m) { const n = Math.round(parseFloat(m[1]) * 60); for (let i = 0; i < n; i++) substep(); }
   requestAnimationFrame((t) => { last = t; requestAnimationFrame(frame); });
