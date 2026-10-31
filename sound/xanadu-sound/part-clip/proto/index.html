@@ -41,6 +41,8 @@ footer{padding:14px 0 0;color:var(--dim);font-size:11.5px;letter-spacing:.03em;t
 .row.liq{flex-wrap:wrap}
 .row.liq button{flex:1 1 calc(50% - 4px)}
 button[aria-pressed=true]{background:#2a2f38;border-color:#8a96aa;color:#fff}
+.ctl.off{opacity:.38}
+.ctl.off input{pointer-events:none}
 .tog{display:flex;align-items:center;gap:10px;min-height:44px;margin:0 0 6px;font-size:15px;color:var(--fg);cursor:pointer}
 .tog input{width:22px;height:22px;margin:0;accent-color:#9aa6b8;flex:none}
 .dimtxt{color:var(--dim);font-size:12px}
@@ -71,21 +73,24 @@ pre#advNum{margin:0 0 8px;padding:10px;font:12px/1.5 ui-monospace,SFMono-Regular
         <button id="bNext" type="button">Next event</button>
       </div>
       <label class="tog" for="tAuto"><input id="tAuto" type="checkbox"> Auto events <span class="dimtxt">(synthetic drops; off = tap only)</span></label>
-      <div class="grp">Liquid</div>
+      <div class="grp">Surface</div>
       <div class="row liq">
-        <button class="sm" type="button" data-liquid="mercury" aria-pressed="false">Mercury</button>
-        <button class="sm" type="button" data-liquid="gallium" aria-pressed="false">Gallium</button>
-        <button class="sm" type="button" data-liquid="silver" aria-pressed="false">Molten silver</button>
-        <button class="sm" type="button" data-liquid="oil" aria-pressed="false">Oil-slick steel</button>
+        <button class="sm" type="button" data-surface="mercury" aria-pressed="false">Mercury</button>
+        <button class="sm" type="button" data-surface="gallium" aria-pressed="false">Gallium</button>
+        <button class="sm" type="button" data-surface="silver" aria-pressed="false">Molten silver</button>
+        <button class="sm" type="button" data-surface="oil" aria-pressed="false">Oil-slick steel</button>
+        <button class="sm" type="button" data-surface="rust" aria-pressed="false">Rusted iron</button>
+        <button class="sm" type="button" data-surface="bronze" aria-pressed="false">Tarnished bronze</button>
       </div>
-      <div class="grp">Override (a liquid change resets these)</div>
+      <p class="note" id="fnote"></p>
+      <div class="grp">Override (a surface change resets these)</div>
       <div class="ctl"><label for="sReflect">Reflect</label><input id="sReflect" type="range" min="0" max="1" step="0.01" value="0.55"><output id="oReflect"></output></div>
       <div class="ctl"><label for="sRefract">Refract</label><input id="sRefract" type="range" min="0" max="3" step="0.05" value="0.9"><output id="oRefract"></output></div>
       <div class="ctl"><label for="sIdle">Idle ripple</label><input id="sIdle" type="range" min="0" max="0.02" step="0.0005" value="0.004"><output id="oIdle"></output></div>
       <div class="ctl"><label for="sTime">Time scale</label><input id="sTime" type="range" min="0.25" max="4" step="0.05" value="1"><output id="oTime"></output></div>
       <details class="sub" id="adv">
-        <summary>Advanced: liquid numbers</summary>
-        <pre id="advNum" aria-label="Active liquid parameters, read only"></pre>
+        <summary>Advanced: surface numbers</summary>
+        <pre id="advNum" aria-label="Active surface parameters, read only"></pre>
       </details>
       <div class="grp">Drop (tap the surface to drop)</div>
       <div class="ctl"><label for="sSize">Drop size</label><input id="sSize" type="range" min="0.05" max="2" step="0.05" value="0.5"><output id="oSize"></output></div>
@@ -94,7 +99,8 @@ pre#advNum{margin:0 0 8px;padding:10px;font:12px/1.5 ui-monospace,SFMono-Regular
       <div class="ctl"><label for="sRings">Ring count</label><input id="sRings" type="range" min="1" max="5" step="0.5" value="2"><output id="oRings"></output></div>
       <div class="grp">Wave</div>
       <div class="ctl"><label for="sSpeed">Wave speed</label><input id="sSpeed" type="range" min="0.05" max="1.2" step="0.01" value="0.3"><output id="oSpeed"></output></div>
-      <div class="ctl"><label for="sDamp">Damping</label><input id="sDamp" type="range" min="0" max="0.06" step="0.0005" value="0.008"><output id="oDamp"></output></div>
+      <div class="ctl" id="cDamp"><label for="sDamp">Damping</label><input id="sDamp" type="range" min="0" max="0.06" step="0.0005" value="0.008"><output id="oDamp"></output></div>
+      <p class="note" id="dnote" hidden>no waves on solid surfaces</p>
       <div class="ctl"><label for="sSpread">Spread</label><input id="sSpread" type="range" min="0.1" max="2" step="0.05" value="0.6"><output id="oSpread"></output></div>
       <div class="ctl"><label for="sLag">Reveal lag (s)</label><input id="sLag" type="range" min="0" max="3" step="0.05" value="0.6"><output id="oLag"></output></div>
       <p class="note" id="wnote"></p>
@@ -135,6 +141,7 @@ const DURATION = 60;        // length of the synthetic event list (s)
 const FOLLOW   = 6.0;       // shown erosion value follows the target at most this fast (stack positions/s); the lag itself is the revealLag slider
 const EDGE_K = 1.0;         // strength of the slope-driven wear-through bevel
 const ERODE_GAIN = 0.5;     // erosion at the drop centre = ERODE_GAIN * drop-size ratio, clamped to 0.05..1 stack positions (so one default drop is half a layer)
+const CRACK_RES = 512;      // crack map resolution (512 or 256)
 const MAXD     = 16;        // drops kept alive at once (impulse, spread and reveal are per drop)
 const SIM_LIFE = 20;        // seconds a drop stays in the list (spread reference + reveal window)
 const SPREAD_OFF = 2.0;     // spread slider maximum = off
@@ -436,16 +443,11 @@ void main(){
   o = vec4((hr - hl) * 0.5, (hu - hd) * 0.5, h, 1.0);
 }`;
 
-const FS_DISPLAY = `#version 300 es
-precision highp float; precision highp sampler2D; precision highp sampler2DArray;
-uniform sampler2D uDerived, uMask;
+// GLSL shared by the liquid and the solid display shaders: noise, erosion-mask read, variant stack, environment.
+const GLSL_COMMON = `
+uniform sampler2D uMask;
 uniform sampler2DArray uVar;
-uniform float uReflect, uRefract, uIdle, uTime, uNImg, uGrid;
-uniform float uFPow, uSpecPow, uBrushStr, uBrushDir, uIrid, uIdleScale, uIdleRate, uEdgeK;
-uniform vec3 uTint;
-uniform vec4 uW[4];            // idle waves: k.xy, omega, phase (seeded in JS)
-in vec2 vUv; out vec4 outC;
-
+uniform float uNImg, uGrid;
 const vec3 WHITE = vec3(0.97, 0.935, 0.87);   // base below the last variant: slightly warm white (display-referred)
 
 float hash12(vec2 p){ vec3 q = fract(vec3(p.xyx) * .1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
@@ -482,7 +484,18 @@ vec3 envMap(vec2 e){
   float b3 = band(e.y + 0.45, 0.30) * 0.5;
   return sky + (b1 * 0.50 + b2 * 0.55 + b3 * 0.4) * vec3(1.0, 0.99, 0.97);
 }
+`;
 
+const FS_DISPLAY = `#version 300 es
+precision highp float; precision highp sampler2D; precision highp sampler2DArray;
+uniform sampler2D uDerived;
+uniform float uReflect, uRefract, uIdle, uTime;
+uniform float uFPow, uSpecPow, uBrushStr, uBrushDir, uIrid, uIdleScale, uIdleRate, uEdgeK;
+uniform vec3 uTint;
+uniform vec4 uW[4];            // idle waves: k.xy, omega, phase (seeded in JS)
+in vec2 vUv; out vec4 outC;
+
+${GLSL_COMMON}
 void main(){
   vec2 uv = vUv;
   // 1. surface slope: simulated field + seeded idle ripple (liquid scales its size and rate)
@@ -537,14 +550,148 @@ void main(){
   outC = vec4(col, 1.0);
 }`;
 
+/* ======================================================================
+   SOLID family shaders: crack map accumulation, solid erosion mask, solid display.
+   ====================================================================== */
+
+// Crack quads. Vertex attribute aP = (across -1..1, half-width of the quad in uv, a, b); see FS_CRACK.
+const VS_CRACK = `#version 300 es
+layout(location = 0) in vec2 aPos;       // uv, v up (same frame as the heightfield)
+layout(location = 1) in vec4 aP;
+out vec4 vP;
+void main(){ vP = aP; gl_Position = vec4(aPos * 2.0 - 1.0, 0.0, 1.0); }`;
+
+// uMode 0 -> crack map (RGBA8, MAX-blended, never cleared during a piece):
+//   R = fissure depth profile (soft-shouldered groove, thins to the tip), G = birth time (s, 1 s per level),
+//   B = wide halo (grime / stress around the fissure).  a = core half-width, b = birth time.
+// uMode 1 -> erosion increment of this step (RGBA8, cleared every step, MAX-blended):
+//   R = amount * feather(across).  a = amount (stack positions), b = feather start f0 (fraction of the half-width).
+const FS_CRACK = `#version 300 es
+precision highp float;
+uniform float uMode;
+in vec4 vP; out vec4 o;
+void main(){
+  float d = abs(vP.x) * vP.y;
+  if (uMode < 0.5) {
+    float wc = vP.z;
+    float core = 1.0 - smoothstep(0.35 * wc, 1.4 * wc + 0.0008, d);
+    float R = core * clamp(wc / 0.0012, 0.2, 1.0);
+    float h = 1.0 - smoothstep(0.0, vP.y, d);
+    float B = 0.6 * h * h * clamp(wc / 0.002, 0.25, 1.0);
+    o = vec4(R, vP.w * smoothstep(0.04, 0.3, core), B, 1.0);
+  } else {
+    o = vec4(vP.z * (1.0 - smoothstep(vP.w, 1.0, abs(vP.x))), 0.0, 0.0, 1.0);
+  }
+}`;
+
+// Solid erosion mask: same two values as FS_MASK (.x target, .y shown), but the increment comes from the
+// crack-band texture drawn this step instead of from radial drop discs. Bottoms out at uMax (white), no wrap.
+const FS_MASK_SOLID = `#version 300 es
+precision highp float; precision highp sampler2D;
+uniform sampler2D uIn, uInc;
+uniform float uMax, uStep;
+out vec4 o;
+void main(){
+  ivec2 ip = ivec2(gl_FragCoord.xy);
+  vec4 m = texelFetch(uIn, ip, 0);
+  float pt = min(m.x + texelFetch(uInc, ip, 0).r, uMax);
+  float ps = min(m.y + min(pt - m.y, uStep), pt);
+  o = vec4(pt, ps, 0.0, 1.0);
+}`;
+
+const FS_DISPLAY_SOLID = `#version 300 es
+precision highp float; precision highp sampler2D; precision highp sampler2DArray;
+uniform sampler2D uCrack;
+uniform float uReflect, uRefract, uIdle, uTime, uCrackRes;
+uniform float uFPow, uSpecPow, uBrushStr, uBrushDir, uBevel, uPitAmt;
+uniform vec3 uTint, uColA, uColB, uColC, uColD, uColP;
+uniform vec4 uCov;             // oxide cover lo/hi, patch lo/hi
+uniform vec4 uSc;              // noise scale A, B, C, patch amount
+in vec2 vUv; out vec4 outC;
+
+${GLSL_COMMON}
+float fbm3(vec2 p){ float a = 0.5, s = 0.0; for (int i = 0; i < 3; i++) { s += a * vnoise(p); p = p * 2.03 + vec2(17.1, 9.2); a *= 0.5; } return s; }
+float fbm(vec2 p){ float a = 0.5, s = 0.0; for (int i = 0; i < 4; i++) { s += a * vnoise(p); p = p * 2.03 + vec2(17.1, 9.2); a *= 0.5; } return s / 0.9375; }
+
+void main(){
+  vec2 uv = vUv;
+  float ct = 1.0 / uCrackRes;
+  // 1. crack map: depth R, birth G, halo B; bevel from its gradient (height = -depth - 0.6 halo)
+  vec4 c0 = texture(uCrack, uv);
+  float R = c0.r, Hh = c0.b;
+  float rl = texture(uCrack, uv - vec2(ct, 0.0)).r, rr = texture(uCrack, uv + vec2(ct, 0.0)).r;
+  float rd = texture(uCrack, uv - vec2(0.0, ct)).r, ru = texture(uCrack, uv + vec2(0.0, ct)).r;
+  float hl = texture(uCrack, uv - vec2(3.0 * ct, 0.0)).b, hr = texture(uCrack, uv + vec2(3.0 * ct, 0.0)).b;
+  float hd = texture(uCrack, uv - vec2(0.0, 3.0 * ct)).b, hu = texture(uCrack, uv + vec2(0.0, 3.0 * ct)).b;
+  vec2 gc = -(0.5 * vec2(rr - rl, ru - rd) + 0.6 * vec2(hr - hl, hu - hd) / 6.0);
+  // 2. erosion value read at a bevel-shifted position (Refract slider): variant stack + exposure
+  vec2 suv = clamp(uv + gc * ct * uRefract * 10.0, 0.003, 0.997);
+  float p = clamp(maskAt(suv), 0.0, uNImg);
+  float fi = floor(p), f = p - fi;
+  float fb = min(fi + 1.0, uNImg);
+  vec2 iuv = vec2(suv.x, 1.0 - suv.y);
+  vec3 img = mix(layerCol(fi, iuv), layerCol(fb, iuv), smoothstep(0.12, 0.88, f));
+  float lumG = dot(img, vec3(0.299, 0.587, 0.114));
+  float expo = smoothstep(0.0, 0.8, p);
+  // 3. brushing, procedural oxide / grime
+  float ca = cos(uBrushDir), sa = sin(uBrushDir);
+  vec2 bu = vec2(ca * uv.x + sa * uv.y, -sa * uv.x + ca * uv.y);
+  float brush = (vnoise(vec2(bu.x * 4.0, bu.y * 190.0)) - 0.5) + 0.6 * (vnoise(vec2(bu.x * 7.0, bu.y * 80.0)) - 0.5)
+              + 0.3 * (vnoise(vec2(bu.x * 3.0, bu.y * 340.0)) - 0.5);
+  vec2 wp = uv + 0.10 * (vec2(vnoise(uv * 3.1 + 1.3), vnoise(uv * 3.1 + 7.7)) - 0.5);   // domain warp: organic blotches
+  float m1 = fbm(wp * uSc.x + 3.7), m2 = fbm(wp * uSc.y + 11.3), m3 = fbm(wp * uSc.z + 5.1);
+  float cov = smoothstep(uCov.x, uCov.y, m1 * 0.65 + m2 * 0.35);
+  cov *= 1.0 - 0.22 * smoothstep(0.12, 0.36, brush);                  // brushing / scuffs wear the coat through
+  float pat = smoothstep(uCov.z, uCov.w, m3 * 0.7 + m2 * 0.3);
+  float pit = smoothstep(0.66, 0.80, fbm(wp * 38.0 + 2.2)) * uPitAmt;
+  float tt = uTime * 0.8, ti = floor(tt), tf = smoothstep(0.0, 1.0, tt - ti);
+  float flick = (mix(vnoise(uv * 70.0 + ti * 7.31), vnoise(uv * 70.0 + (ti + 1.0) * 7.31), tf) - 0.5) * uIdle * 20.0;
+  vec3 metal = uColA * (1.0 + brush * uBrushStr * 0.7);
+  vec3 ox = mix(uColB, uColC, smoothstep(0.35, 0.75, m2));
+  ox = mix(ox, uColD, pat * uSc.w);
+  ox = mix(ox, uColP, pit);
+  ox *= (1.0 + (m1 - 0.5) * 0.30) * (1.0 + flick) * (1.0 + brush * uBrushStr * 0.12);
+  vec3 base = mix(metal, ox, cov);
+  base *= mix(1.0, clamp(lumG / 0.55, 0.30, 1.5), 0.92);             // the profile image stains the coat
+  vec3 a = mix(base, img * vec3(1.0, 0.97, 0.93) * (0.92 + brush * uBrushStr * 0.3), expo * 0.92);
+  float born = c0.g * 255.0;
+  float fresh = (c0.g > 0.0 ? exp(-max(uTime - born, 0.0) / 6.0) : 0.0) * smoothstep(0.0, 0.45, R + Hh * 0.5);
+  a = mix(a, uColA * 1.25, fresh * 0.45);                            // a new fissure shows bright metal for a few seconds
+  a *= 1.0 - 0.38 * Hh * (1.0 - expo);                                // grime gathers around the fissure
+  vec3 alb = a * a;
+  // 4. lighting: bevel + fine relief of the coat
+  vec2 mp = wp * 70.0;
+  float n0 = fbm3(mp);
+  vec2 gm = vec2(fbm3(mp + vec2(0.3, 0.0)) - n0, fbm3(mp + vec2(0.0, 0.3)) - n0);
+  vec2 gs = gc * uBevel + gm * 1.1 * cov;
+  vec3 nL = normalize(vec3(-gs, 1.0));
+  vec3 L = normalize(vec3(-0.5, 0.6, 0.65));
+  float dif = 0.5 + 0.75 * max(dot(nL, L), 0.0);
+  vec3 nE = normalize(vec3(-gs * 1.6, 1.0));
+  vec3 V = normalize(vec3(0.5 - uv, 1.7));
+  vec3 Rv = reflect(-V, nE);
+  float bare = clamp(1.0 - cov + expo, 0.0, 1.0);
+  float F0 = uReflect * (1.0 + 0.9 * bare);                          // low Fresnel base, a little higher where the metal shows
+  float cv = max(dot(nE, V), 0.0);
+  float F = F0 + (1.0 - F0) * pow(1.0 - cv, uFPow);
+  vec3 en = envMap(Rv.xy / max(Rv.z, 0.15) * 1.4) * uTint * (1.0 + brush * uBrushStr * 0.8);
+  vec3 H = normalize(L + V);
+  float sp = pow(max(dot(nE, H), 0.0), uSpecPow) * max(1.0 + brush * uBrushStr * 4.0, 0.0) * (0.25 + 0.75 * bare) * (0.55 + 0.45 * m2);
+  vec3 col = alb * dif * (1.0 - F) + en * F + sp * 0.45 * mix(vec3(1.0), uTint, 0.7);
+  col *= 1.0 - 0.95 * smoothstep(0.15, 0.80, R);                     // the fissure itself is dark
+  col = sqrt(max(col, 0.0));
+  col += (hash12(gl_FragCoord.xy) - 0.5) / 255.0;
+  outC = vec4(col, 1.0);
+}`;
+
 function compile(type, src) {
   const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
   if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error('Shader compile: ' + gl.getShaderInfoLog(s));
   return s;
 }
-function makeProg(fs, names) {
+function makeProg(fs, names, vs) {
   const p = gl.createProgram();
-  gl.attachShader(p, compile(gl.VERTEX_SHADER, VS));
+  gl.attachShader(p, compile(gl.VERTEX_SHADER, vs || VS));
   gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs));
   gl.linkProgram(p);
   if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error('Program link: ' + gl.getProgramInfoLog(p));
@@ -552,7 +699,7 @@ function makeProg(fs, names) {
   return { p, u };
 }
 
-let progSim, progTens, progMask, progDerive, progDisplay;
+let progSim, progTens, progMask, progDerive, progDisplay, progCrack, progMaskS, progDisplayS;
 try {
   progSim = makeProg(FS_SIM, ['uState', 'uC2', 'uDamp', 'uEdge', 'uSpread', 'uRs', 'uSize', 'uDa', 'uDb']);
   progTens = makeProg(FS_TENS, ['uState', 'uSize', 'uTens']);
@@ -560,6 +707,10 @@ try {
   progDerive = makeProg(FS_DERIVE, ['uState', 'uSize']);
   progDisplay = makeProg(FS_DISPLAY, ['uDerived', 'uMask', 'uVar', 'uReflect', 'uRefract', 'uIdle', 'uTime', 'uNImg', 'uGrid', 'uW',
     'uFPow', 'uSpecPow', 'uBrushStr', 'uBrushDir', 'uIrid', 'uIdleScale', 'uIdleRate', 'uEdgeK', 'uTint']);
+  progCrack = makeProg(FS_CRACK, ['uMode'], VS_CRACK);
+  progMaskS = makeProg(FS_MASK_SOLID, ['uIn', 'uInc', 'uMax', 'uStep']);
+  progDisplayS = makeProg(FS_DISPLAY_SOLID, ['uCrack', 'uMask', 'uVar', 'uReflect', 'uRefract', 'uIdle', 'uTime', 'uCrackRes', 'uNImg', 'uGrid',
+    'uFPow', 'uSpecPow', 'uBrushStr', 'uBrushDir', 'uBevel', 'uPitAmt', 'uTint', 'uColA', 'uColB', 'uColC', 'uColD', 'uColP', 'uCov', 'uSc']);
 } catch (err) { fail(String(err.message || err)); return; }
 
 const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
@@ -576,7 +727,7 @@ function makeTarget(size, internal, type, filter) {
   gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
   gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
   const ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
-  return { tex, fbo, ok };
+  return { tex, fbo, ok, size };
 }
 function makePair(internal, type, filter) {
   const a = makeTarget(GRID, internal, type, filter), b = makeTarget(GRID, internal, type, filter);
@@ -592,6 +743,16 @@ let mask = f32 ? makePair(gl.RGBA32F, gl.FLOAT, gl.NEAREST) : null;
 if (!mask || !mask.ok) mask = makePair(gl.RGBA16F, gl.HALF_FLOAT, gl.NEAREST);
 const derived = makeTarget(GRID, gl.RGBA16F, gl.HALF_FLOAT, gl.LINEAR);
 if (!state.ok || !mask.ok || !derived.ok) { fail('Float framebuffers are incomplete on this device.'); return; }
+// Solid family: crack map (CRACK_RES^2 RGBA8, bilinear, MAX-blended, never healed) and this step's erosion increment
+// (GRID^2 RGBA8, cleared every step). Plain 8-bit targets: no float blending needed, works on iOS Safari.
+const crackMap = makeTarget(CRACK_RES, gl.RGBA8, gl.UNSIGNED_BYTE, gl.LINEAR);
+const incMap = makeTarget(GRID, gl.RGBA8, gl.UNSIGNED_BYTE, gl.NEAREST);
+if (!crackMap.ok || !incMap.ok) { fail('Crack framebuffers are incomplete on this device.'); return; }
+const vaoC = gl.createVertexArray(), vboC = gl.createBuffer();
+gl.bindVertexArray(vaoC); gl.bindBuffer(gl.ARRAY_BUFFER, vboC);
+gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 24, 0);
+gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 24, 8);
+gl.bindVertexArray(vao);
 
 // Variant stack: TEXTURE_2D_ARRAY, 4 layers
 const varTex = gl.createTexture();
@@ -660,7 +821,31 @@ const LIQUIDS = {
              brushStr: 0.240, brushDir: 1.15, tint: [0.40, 0.43, 0.48], irid: 0.32,
              idleAmp: 1.5, idleScale: 0.5, idleRate: 0.35, refract: 0.6, idle: 0.0050, time: 1 }
 };
+// SOLIDS: oxidised metal under a coat. No waves; cracks instead. Colours are display-referred (gamma) RGB.
+//   fresnelBase / fresnelPow / specPow / brushStr / brushDir / tint   as for the liquids (but low reflectance, broad lobe)
+//   bare, oxD, oxL, patch, pit    bare metal, dark and light oxide, patch colour (flaked rust / verdigris), pits
+//   cover [lo, hi]    smoothstep window of the oxide coat over the noise (higher lo = more bare metal)
+//   patchTh [lo, hi], patchAmt    where and how strongly the patch colour replaces the oxide
+//   scaleA/B/C       noise frequencies (coarse mottle, fine mottle, patches), pitAmt  pit darkening
+//   bevel            bevel strength of the fissures (normal from the crack-map gradient)
+//   reflect, refract, idle, time   defaults of the four override sliders (refract = how far the image shifts at fissure bevels,
+//                                  idle = faint flicker of the grime)
+const SOLIDS = {
+  rust:   { name: 'Rusted iron', family: 'solid', fresnelBase: 0.10, fresnelPow: 4.0, specPow: 14, brushStr: 0.60, brushDir: 0.08,
+            tint: [1.00, 0.90, 0.80], bevel: 2.4,
+            bare: [0.34, 0.34, 0.35], oxD: [0.27, 0.115, 0.065], oxL: [0.50, 0.24, 0.10], patch: [0.62, 0.32, 0.12], pit: [0.08, 0.04, 0.03],
+            cover: [0.20, 0.44], patchTh: [0.50, 0.72], patchAmt: 0.45, pitAmt: 0.65, scaleA: 4.0, scaleB: 11.0, scaleC: 7.0,
+            refract: 0.5, idle: 0.0040, time: 1 },
+  bronze: { name: 'Tarnished bronze', family: 'solid', fresnelBase: 0.14, fresnelPow: 4.0, specPow: 24, brushStr: 0.32, brushDir: -0.30,
+            tint: [1.00, 0.86, 0.66], bevel: 2.0,
+            bare: [0.68, 0.45, 0.22], oxD: [0.27, 0.18, 0.105], oxL: [0.40, 0.28, 0.17], patch: [0.46, 0.54, 0.46], pit: [0.09, 0.07, 0.05],
+            cover: [0.16, 0.42], patchTh: [0.44, 0.62], patchAmt: 0.85, pitAmt: 0.40, scaleA: 3.5, scaleB: 10.0, scaleC: 6.0,
+            refract: 0.5, idle: 0.0040, time: 1 }
+};
+const SURFACE_ALIAS = { 'rusted-iron': 'rust', iron: 'rust', 'tarnished-bronze': 'bronze' };
+
 let liquidKey = 'mercury', liquid = LIQUIDS.mercury;
+let family = 'liquid', solid = null;      // active surface family; `liquid` stays the last chosen liquid, `solid` the active solid
 const params = Object.assign({ reflect: liquid.fresnelBase, refract: liquid.refract, idle: liquid.idle, time: liquid.time }, ARTIST);
 let playing = true, autoEvents = false, stepCount = 0, acc = 0, evIdx = 0, evCount = 0;
 let manualQ = [], manualN = 0, tapN = 0;
@@ -722,6 +907,231 @@ function fillDrops() {
   }
 }
 
+/* ======================================================================
+   SOLID family: crack clusters.
+   A drop spawns, on the CPU, 3..7 primary rays (random walk with seeded jitter, smoothed with Catmull-Rom into
+   ~0.005 uv samples) and 1..3 branches per ray and generation. The whole cluster is planned at once (deterministic:
+   seed = hash(drop index, x, y)); every step only the newly grown arc-length range of each polyline is rasterised:
+     - the crack map (MAX-blended, never cleared): fissure depth, birth time, halo;
+     - the erosion increment of this step (cleared every step), drawn along the same polylines but trailing the
+       tip by the reveal lag; consecutive ranges tile the band exactly, so a drop adds `amount * feather` in total.
+   Growth: one front distance D(t) per drop (speed from Wave speed, eased in over Attack); a polyline with offset
+   `off` and speed factor `spd` has grown (D - off) * spd along itself, so branches leave when the parent's front
+   passes the branch point.
+   ====================================================================== */
+const CRACK_V   = 0.8;      // front speed (uv/s) per unit of the Wave speed slider
+const CRACK_L0  = 0.26;     // primary ray length at the reference drop size (uv); scaled by sqrt(size), capped by Spread
+const CORE_W    = 0.0030;   // fissure half-width at the root of a primary ray (uv); tips taper to TIP_W of it
+const TIP_W     = 0.18;
+const HALO_K    = 6;        // halo half-width = HALO_K * core half-width (min HMIN)
+const HMIN      = 0.0034;
+const BAND_W    = 0.010;    // erosion band half-width (uv) at the reference size
+const DS        = 0.005;    // polyline sample spacing (uv)
+const JAG       = 0.0016;   // fine jaggedness of the fissure core (uv)
+const MAX_POLY  = 90;       // polylines per drop
+const OCC       = 128;      // CPU occupancy grid: how many earlier drops crossed each cell
+const occ = new Uint8Array(OCC * OCC), occStamp = new Int32Array(OCC * OCC);
+let cdrops = [], dropSeq = 0;
+
+function hash3(a, b, c) {
+  let h = (Math.imul(a | 0, 0x9E3779B1) ^ Math.imul(b | 0, 0x85EBCA6B) ^ Math.imul(c | 0, 0xC2B2AE35)) >>> 0;
+  h ^= h >>> 15; h = Math.imul(h, 0x2C1B3C6D) >>> 0; h ^= h >>> 12; h = Math.imul(h, 0x297A2D39) >>> 0; h ^= h >>> 15;
+  return h >>> 0;
+}
+const sstep = (a, b, x) => { const t = clamp01((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+function occAt(x, y) {          // max crossing count of the 3x3 cells around (x, y)
+  const cx = Math.floor(x * OCC), cy = Math.floor(y * OCC);
+  let m = 0;
+  for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) {
+    const a = cx + i, b = cy + j;
+    if (a >= 0 && a < OCC && b >= 0 && b < OCC) m = Math.max(m, occ[b * OCC + a]);
+  }
+  return m;
+}
+// Front distance (uv) after t seconds: speed v, eased in over att (smoothstep velocity ramp, closed-form integral).
+function frontDist(t, v, att) {
+  if (t <= 0) return 0;
+  if (att <= 1e-6 || t >= att) return v * (t - 0.5 * att);
+  const x = t / att;
+  return v * att * (x * x * x - 0.5 * x * x * x * x);
+}
+
+// One random-walk polyline -> dense smoothed samples.
+function buildPoly(rnd, g, x0, y0, ang0, len, gen, off, spd, w0, ewBase) {
+  const bx = [x0], by = [y0];
+  let x = x0, y = y0, ang = ang0, d = 0, drift = 0, r0 = Math.hypot(x0 - g.ox, y0 - g.oy);
+  while (d < len - 1e-6 && bx.length < 64) {
+    let st = g.stepL * (0.7 + 0.6 * rnd());
+    if (d + st > len) st = len - d;
+    drift = drift * 0.7 + (rnd() - 0.5) * 0.22;
+    ang += (rnd() + rnd() + rnd() - 1.5) * 2 * g.sigma + drift;
+    let nx = x + Math.cos(ang) * st, ny = y + Math.sin(ang) * st;
+    const rr = Math.hypot(nx - g.ox, ny - g.oy);
+    let last = false;
+    if (rr > g.reach) {                         // maximum reach (Spread): clip the step at the boundary and stop
+      const t = clamp01((g.reach - r0) / Math.max(rr - r0, 1e-9));
+      nx = x + (nx - x) * t; ny = y + (ny - y) * t; last = true;
+    }
+    if (Math.hypot(nx - x, ny - y) > 1e-5) { bx.push(nx); by.push(ny); }
+    r0 = Math.hypot(nx - g.ox, ny - g.oy);
+    x = nx; y = ny; d += st;
+    if (last || x < -0.1 || x > 1.1 || y < -0.1 || y > 1.1) break;
+  }
+  if (bx.length < 2) return null;
+  const px = [], py = [], n = bx.length;
+  for (let i = 0; i < n - 1; i++) {
+    const i0 = Math.max(0, i - 1), i3 = Math.min(n - 1, i + 2);
+    const m = Math.max(1, Math.ceil(Math.hypot(bx[i + 1] - bx[i], by[i + 1] - by[i]) / DS));
+    for (let j = 0; j < m; j++) {
+      const t = j / m, t2 = t * t, t3 = t2 * t;
+      const cr = (a, b, c, e) => 0.5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - e) * t2 + (-a + 3 * b - 3 * c + e) * t3);
+      px.push(cr(bx[i0], bx[i], bx[i + 1], bx[i3])); py.push(cr(by[i0], by[i], by[i + 1], by[i3]));
+    }
+  }
+  px.push(bx[n - 1]); py.push(by[n - 1]);
+  const N = px.length, cl = new Float32Array(N), cx = new Float32Array(N), cy = new Float32Array(N), ew = new Float32Array(N);
+  let jg = 0;
+  for (let i = 0; i < N; i++) {
+    if (i) cl[i] = cl[i - 1] + Math.hypot(px[i] - px[i - 1], py[i] - py[i - 1]);
+    const a = Math.max(0, i - 1), b = Math.min(N - 1, i + 1);
+    const tx = px[b] - px[a], ty = py[b] - py[a], tl = Math.hypot(tx, ty) || 1;
+    jg = jg * 0.5 + (rnd() - 0.5) * 2 * JAG;
+    cx[i] = px[i] - ty / tl * jg; cy[i] = py[i] + tx / tl * jg;
+    ew[i] = Math.min(2.4, (1 + 0.22 * Math.min(occAt(px[i], py[i]), 5)) * ewBase);   // widen where earlier drops already cracked
+  }
+  return { x: Float32Array.from(px), y: Float32Array.from(py), cx, cy, cl, ew, n: N, len: cl[N - 1], gen, off, spd, w0 };
+}
+
+function spawnCracks(ev) {
+  const seq = dropSeq++;
+  const ox = ev.x, oy = 1 - ev.y;
+  const rnd = mulberry32(hash3(seq, Math.round(ox * 4096), Math.round(oy * 4096)));
+  const k = (ev.size * params.size) / S_REF, sc = Math.sqrt(k);
+  const reach = params.spread >= SPREAD_OFF - 1e-9 ? 1.5 : 0.5 * params.spread;
+  const stepL = Math.min(0.12, Math.max(0.012, params.wave * 0.3));
+  const sigma = Math.min(0.6, 0.30 * Math.sqrt(stepL / 0.048) * (0.55 + 0.45 * Math.min(2, params.wave / 0.16)));
+  const g = { ox, oy, reach, stepL, sigma };
+  const nRays = Math.max(3, Math.min(7, Math.round(3 + 4 * clamp01((sc - 0.4) / 1.2) + (rnd() - 0.5) * 1.6)));
+  const lvls = params.rings - 1;                                    // branch generations (children levels); .5 = half of the last level
+  const spacing = Math.max(0.03, params.wave * 0.5);
+  const tm = Math.min(1.8, 1 + 0.25 * Math.min(occAt(ox, oy), 4));     // dropped next to an old fissure: wider bands
+  const polys = [];
+  const a0 = rnd() * Math.PI * 2;
+  for (let i = 0; i < nRays && polys.length < MAX_POLY; i++) {
+    const ang = a0 + (Math.PI * 2) * (i + (rnd() - 0.5) * 0.7) / nRays;
+    const len = Math.min(reach, CRACK_L0 * sc * (0.6 + 0.6 * rnd()));
+    const w0 = CORE_W * (0.8 + 0.2 * sc) * (0.85 + 0.3 * rnd());
+    const P = buildPoly(rnd, g, ox, oy, ang, len, 0, 0, 0.92 + 0.16 * rnd(), w0, tm);
+    if (!P) continue;
+    polys.push(P);
+    // children, breadth first per ray
+    const queue = [P];
+    while (queue.length && polys.length < MAX_POLY) {
+      const q = queue.shift();
+      if (q.gen >= Math.ceil(lvls)) continue;
+      const lastHalf = lvls - q.gen < 1;                              // this parent's children belong to the fractional level
+      const nb = q.gen === 0 ? 1 + Math.floor(rnd() * 3) : Math.floor(rnd() * 2.2);
+      let s = q.len * 0.22 + rnd() * 0.02;
+      for (let j = 0; j < nb && s < q.len * 0.88 && polys.length < MAX_POLY; j++, s += spacing * (0.8 + 0.4 * rnd())) {
+        if (lastHalf && rnd() >= (lvls - Math.floor(lvls) || 1)) continue;
+        let ii = 0; while (ii < q.n - 2 && q.cl[ii + 1] < s) ii++;
+        const tx = q.x[Math.min(q.n - 1, ii + 1)] - q.x[ii], ty = q.y[Math.min(q.n - 1, ii + 1)] - q.y[ii];
+        const f = q.cl[Math.min(q.n - 1, ii + 1)] > q.cl[ii] ? (s - q.cl[ii]) / (q.cl[ii + 1] - q.cl[ii]) : 0;
+        const bx = q.x[ii] + tx * f, by = q.y[ii] + ty * f;
+        const side = rnd() < 0.5 ? -1 : 1;
+        const ca = Math.atan2(ty, tx) + side * (0.45 + 0.5 * rnd());
+        const clen = Math.min(reach, q.len * (0.35 + 0.3 * rnd()));
+        const C = buildPoly(rnd, g, bx, by, ca, clen, q.gen + 1, q.off + s / q.spd, q.spd * (0.8 + 0.15 * rnd()), q.w0 * 0.62, tm);
+        if (C) { polys.push(C); queue.push(C); }
+      }
+    }
+  }
+  // remember where this drop cracked (each drop counts once per cell), after all lookups
+  for (const P of polys) for (let i = 0; i < P.n; i++) {
+    const cx = Math.floor(P.x[i] * OCC), cy = Math.floor(P.y[i] * OCC);
+    if (cx < 0 || cx >= OCC || cy < 0 || cy >= OCC) continue;
+    const c = cy * OCC + cx;
+    if (occStamp[c] !== seq + 1) { occStamp[c] = seq + 1; if (occ[c] < 255) occ[c]++; }
+  }
+  if (!polys.length) return;
+  const v = CRACK_V * params.speed;
+  let dmax = 0; for (const P of polys) dmax = Math.max(dmax, P.off + P.len / P.spd);
+  cdrops.push({ t0: stepCount, seq, polys, v, att: params.attack, lag: params.lag,
+                ero: Math.min(1, Math.max(0.05, ERODE_GAIN * k)), f0: 1 - (0.06 + 0.94 * clamp01(params.soft)),
+                wE: BAND_W * (0.8 + 0.2 * sc), tb: Math.min(255, stepCount * DT) / 255,
+                tEnd: dmax / Math.max(v, 1e-4) + 0.5 * params.attack + params.lag + 0.1 });
+}
+
+// Quads of one arc-length range [L0, L1] of polyline P. core: crack-map quads; else erosion-band quads.
+function emitRange(out, cd, P, L0, L1, core) {
+  const X = core ? P.cx : P.x, Y = core ? P.cy : P.y, cl = P.cl;
+  let i = 0, hi = P.n - 2;
+  { let lo = 0; while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (cl[mid] <= L0) lo = mid; else hi = mid - 1; } i = lo; }
+  for (; i < P.n - 1 && cl[i] < L1; i++) {
+    const seg = cl[i + 1] - cl[i];
+    if (seg <= 1e-9) continue;
+    const s0 = Math.max(L0, cl[i]), s1 = Math.min(L1, cl[i + 1]);
+    if (s1 <= s0 + 1e-9) continue;
+    const dx = X[i + 1] - X[i], dy = Y[i + 1] - Y[i], dl = Math.hypot(dx, dy) || 1;
+    const ux = dx / dl, uy = dy / dl, nx = -uy, ny = ux;                        // direction of the whole dense segment (watertight tiling)
+    const fa = (s0 - cl[i]) / seg, fb = (s1 - cl[i]) / seg;
+    let ax = X[i] + dx * fa, ay = Y[i] + dy * fa, bx = X[i] + dx * fb, by = Y[i] + dy * fb;
+    const ta = s0 / P.len, tb = s1 / P.len;
+    let hA, hB, a0, a1, b0, b1;
+    if (core) {
+      const wA = P.w0 * (1 - (1 - TIP_W) * Math.pow(ta, 0.85)), wB = P.w0 * (1 - (1 - TIP_W) * Math.pow(tb, 0.85));
+      hA = Math.max(wA * HALO_K, HMIN); hB = Math.max(wB * HALO_K, HMIN);
+      a0 = wA; a1 = wB; b0 = b1 = cd.tb;
+      const ext = 0.0012; ax -= ux * ext; ay -= uy * ext; bx += ux * ext; by += uy * ext;   // overlap: no gaps at bends
+    } else {
+      const eA = P.ew[i] + (P.ew[i + 1] - P.ew[i]) * fa, eB = P.ew[i] + (P.ew[i + 1] - P.ew[i]) * fb;
+      hA = Math.max(0.004, cd.wE * Math.pow(0.8, P.gen) * eA * (1 - 0.55 * ta));
+      hB = Math.max(0.004, cd.wE * Math.pow(0.8, P.gen) * eB * (1 - 0.55 * tb));
+      a0 = cd.ero * (P.gen ? 0.35 + 0.65 * sstep(0, 0.03, s0) : 1);
+      a1 = cd.ero * (P.gen ? 0.35 + 0.65 * sstep(0, 0.03, s1) : 1);
+      b0 = b1 = cd.f0;
+    }
+    // two triangles: (A-, A+, B-), (A+, B+, B-)
+    const Am = [ax - nx * hA, ay - ny * hA, -1, hA, a0, b0], Ap = [ax + nx * hA, ay + ny * hA, 1, hA, a0, b0];
+    const Bm = [bx - nx * hB, by - ny * hB, -1, hB, a1, b1], Bp = [bx + nx * hB, by + ny * hB, 1, hB, a1, b1];
+    out.push(...Am, ...Ap, ...Bm, ...Ap, ...Bp, ...Bm);
+  }
+}
+
+function drawQuads(arr, target, mode) {
+  if (!arr.length) return;
+  gl.bindVertexArray(vaoC);
+  gl.bindBuffer(gl.ARRAY_BUFFER, vboC);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arr), gl.DYNAMIC_DRAW);
+  const P = pass(progCrack, target, target.size);
+  gl.uniform1f(P.u.uMode, mode);
+  gl.enable(gl.BLEND); gl.blendEquation(gl.MAX); gl.blendFunc(gl.ONE, gl.ONE);
+  gl.drawArrays(gl.TRIANGLES, 0, arr.length / 6);
+  gl.disable(gl.BLEND);
+  gl.bindVertexArray(vao);
+}
+
+// One fixed step of every growing cluster: crack map += newly grown core, increment target = newly eroded band.
+function crackPass() {
+  const core = [], band = [];
+  for (const cd of cdrops) {
+    const a0 = (stepCount - cd.t0) * DT, a1 = a0 + DT;
+    const D0 = frontDist(a0, cd.v, cd.att), D1 = frontDist(a1, cd.v, cd.att);
+    const E0 = frontDist(a0 - cd.lag, cd.v, cd.att), E1 = frontDist(a1 - cd.lag, cd.v, cd.att);
+    for (const P of cd.polys) {
+      const g0 = clamp((D0 - P.off) * P.spd, 0, P.len), g1 = clamp((D1 - P.off) * P.spd, 0, P.len);
+      if (g1 > g0) emitRange(core, cd, P, g0, g1, true);
+      const e0 = clamp((E0 - P.off) * P.spd, 0, P.len), e1 = clamp((E1 - P.off) * P.spd, 0, P.len);
+      if (e1 > e0) emitRange(band, cd, P, e0, e1, false);
+    }
+  }
+  cdrops = cdrops.filter((cd) => (stepCount + 1 - cd.t0) * DT < cd.tEnd);
+  drawQuads(core, crackMap, 0);
+  clearTarget(incMap, 0, 0, 0, 1);
+  drawQuads(band, incMap, 1);
+}
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+
 function bindTex(unit, target, tex, loc) {
   gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(target, tex); gl.uniform1i(loc, unit);
 }
@@ -758,12 +1168,27 @@ function maskPass() {
   mask.flip();
 }
 
+function maskSolidPass() {
+  const P = pass(progMaskS, mask.nxt, GRID);
+  bindTex(0, gl.TEXTURE_2D, mask.cur.tex, P.u.uIn);
+  bindTex(1, gl.TEXTURE_2D, incMap.tex, P.u.uInc);
+  gl.uniform1f(P.u.uMax, variantN); gl.uniform1f(P.u.uStep, FOLLOW * DT);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  mask.flip();
+}
+
 function substep() {
   const t = stepCount * DT;
   let ev = null;
   if (manualQ.length) { ev = manualQ.shift(); evCount++; }
   else if (autoEvents && evIdx < EVENTS.length && EVENTS[evIdx].t <= t + 1e-9) { ev = EVENTS[evIdx++]; evCount++; }
-  if (ev) addDrop(makeDrop(ev));
+  if (ev) { if (family === 'solid') spawnCracks(ev); else addDrop(makeDrop(ev)); }
+  if (family === 'solid') {                            // no wave simulation: cracks grow, the erosion follows them
+    crackPass();
+    maskSolidPass();
+    stepCount++;
+    return;
+  }
   fillDrops();
   const sp = simState();
   simPass(sp, true);                                   // impulse increment lands in the first iteration only
@@ -774,13 +1199,15 @@ function substep() {
 }
 
 function clearTarget(tg, r, g, b, a) {
-  gl.bindFramebuffer(gl.FRAMEBUFFER, tg.fbo); gl.viewport(0, 0, GRID, GRID);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, tg.fbo); gl.viewport(0, 0, tg.size, tg.size);
   gl.clearColor(r, g, b, a); gl.clear(gl.COLOR_BUFFER_BIT);
 }
 function restart() {
   state.t.forEach((t) => clearTarget(t, 0, 0, 0, 1));
   mask.t.forEach((t) => clearTarget(t, 0, 0, 0, 1));
   clearTarget(derived, 0, 0, 0, 1);
+  clearTarget(crackMap, 0, 0, 0, 1); clearTarget(incMap, 0, 0, 0, 1);
+  cdrops = []; dropSeq = 0; occ.fill(0); occStamp.fill(0);
   stepCount = 0; acc = 0; evIdx = 0; evCount = 0; manualQ = []; manualN = 0; tapN = 0; drops = [];
 }
 
@@ -818,6 +1245,7 @@ function render() {
   const w = Math.max(2, Math.min(1024, Math.round(r.width * dpr)));
   if (canvas.width !== w || canvas.height !== w) { canvas.width = w; canvas.height = w; }
 
+  if (family === 'solid') { renderSolid(w); return; }
   const D = pass(progDerive, derived, GRID);
   bindTex(0, gl.TEXTURE_2D, state.cur.tex, D.u.uState);
   gl.uniform1f(D.u.uSize, GRID);
@@ -835,6 +1263,25 @@ function render() {
   gl.uniform1f(P.u.uBrushStr, L.brushStr); gl.uniform1f(P.u.uBrushDir, L.brushDir);
   gl.uniform1f(P.u.uIrid, L.irid); gl.uniform1f(P.u.uIdleScale, L.idleScale); gl.uniform1f(P.u.uIdleRate, L.idleRate);
   gl.uniform1f(P.u.uEdgeK, EDGE_K); gl.uniform3fv(P.u.uTint, L.tint);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+}
+
+function renderSolid(w) {
+  const S = solid;
+  const P = pass(progDisplayS, null, w);
+  bindTex(0, gl.TEXTURE_2D, crackMap.tex, P.u.uCrack);
+  bindTex(1, gl.TEXTURE_2D, mask.cur.tex, P.u.uMask);
+  bindTex(2, gl.TEXTURE_2D_ARRAY, varTex, P.u.uVar);
+  gl.uniform1f(P.u.uReflect, params.reflect); gl.uniform1f(P.u.uRefract, params.refract);
+  gl.uniform1f(P.u.uIdle, params.idle); gl.uniform1f(P.u.uTime, stepCount * DT + (playing ? acc : 0));
+  gl.uniform1f(P.u.uCrackRes, CRACK_RES); gl.uniform1f(P.u.uNImg, variantN); gl.uniform1f(P.u.uGrid, GRID);
+  gl.uniform1f(P.u.uFPow, S.fresnelPow); gl.uniform1f(P.u.uSpecPow, S.specPow);
+  gl.uniform1f(P.u.uBrushStr, S.brushStr); gl.uniform1f(P.u.uBrushDir, S.brushDir);
+  gl.uniform1f(P.u.uBevel, S.bevel); gl.uniform1f(P.u.uPitAmt, S.pitAmt);
+  gl.uniform3fv(P.u.uTint, S.tint); gl.uniform3fv(P.u.uColA, S.bare); gl.uniform3fv(P.u.uColB, S.oxD);
+  gl.uniform3fv(P.u.uColC, S.oxL); gl.uniform3fv(P.u.uColD, S.patch); gl.uniform3fv(P.u.uColP, S.pit);
+  gl.uniform4f(P.u.uCov, S.cover[0], S.cover[1], S.patchTh[0], S.patchTh[1]);
+  gl.uniform4f(P.u.uSc, S.scaleA, S.scaleB, S.scaleC, S.patchAmt);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
 }
 
@@ -861,7 +1308,7 @@ function frame(now) {
    ====================================================================== */
 const fmt = { reflect: (v) => v.toFixed(2), refract: (v) => v.toFixed(2), damp: (v) => v.toFixed(4),
               idle: (v) => v.toFixed(4), size: (v) => v.toFixed(2), time: (v) => v.toFixed(2) + 'x',
-              speed: (v) => { const s = simState(); return s.c.toFixed(2) + (s.clamped ? '*' : ''); },
+              speed: (v) => { if (family === 'solid') return (CRACK_V * v).toFixed(2); const s = simState(); return s.c.toFixed(2) + (s.clamped ? '*' : ''); },
               wave: (v) => v.toFixed(3), rings: (v) => v.toFixed(1), attack: (v) => v.toFixed(2),
               spread: (v) => (v >= SPREAD_OFF - 1e-9 ? 'off' : v.toFixed(2)), lag: (v) => v.toFixed(2), soft: (v) => v.toFixed(2) };
 const ids = { size: 'Size', attack: 'Attack', wave: 'Wave', rings: 'Rings', speed: 'Speed', damp: 'Damp', spread: 'Spread',
@@ -869,26 +1316,48 @@ const ids = { size: 'Size', attack: 'Attack', wave: 'Wave', rings: 'Rings', spee
 
 const r3 = (v) => Math.round(v * 1000) / 1000;
 function syncValues() {
-  const st = simState();
-  $('wnote').textContent = 'wave speed ' + (st.clamped ? 'set ' + params.speed.toFixed(2) + ', clamped to ' + st.c.toFixed(3) + ' (stability)' : st.c.toFixed(3)) +
-    ' uv/s · ' + st.n + ' iter/step · C2 ' + st.C2.toFixed(3) + ' (limit 0.5)';
-  $('json').value = JSON.stringify({
-    liquid: liquid.name, autoEvents,
-    dropSize: params.size, attack: params.attack, wavelength: params.wave, ringCount: params.rings,
-    waveSpeed: params.speed, waveSpeedEffective: r3(st.c), damping: params.damp,
-    spread: params.spread >= SPREAD_OFF - 1e-9 ? 'off' : params.spread, revealLag: params.lag,
+  const cur = family === 'solid' ? solid : liquid;
+  const o = { surface: cur.name, family };
+  if (family === 'liquid') o.liquid = liquid.name;
+  o.autoEvents = autoEvents;
+  Object.assign(o, { dropSize: params.size, attack: params.attack, wavelength: params.wave, ringCount: params.rings, waveSpeed: params.speed });
+  if (family === 'solid') {
+    const reach = params.spread >= SPREAD_OFF - 1e-9 ? null : r3(0.5 * params.spread);
+    $('wnote').textContent = 'crack growth ' + (CRACK_V * params.speed).toFixed(3) + ' uv/s · reach ' + (reach == null ? 'unlimited' : reach + ' uv') +
+      ' · branch generations ' + Math.max(0, params.rings - 1) + ' · no wave simulation';
+    o.crackGrowthSpeed = r3(CRACK_V * params.speed);
+    o.damping = null;
+  } else {
+    const st = simState();
+    $('wnote').textContent = 'wave speed ' + (st.clamped ? 'set ' + params.speed.toFixed(2) + ', clamped to ' + st.c.toFixed(3) + ' (stability)' : st.c.toFixed(3)) +
+      ' uv/s · ' + st.n + ' iter/step · C2 ' + st.C2.toFixed(3) + ' (limit 0.5)';
+    o.waveSpeedEffective = r3(st.c);
+    o.damping = params.damp;
+  }
+  Object.assign(o, { spread: params.spread >= SPREAD_OFF - 1e-9 ? 'off' : params.spread, revealLag: params.lag,
     erodeSoftness: params.soft, variants: variantN,
-    reflect: params.reflect, refract: params.refract, idle: params.idle, timeScale: params.time
-  }, null, 1);
+    reflect: params.reflect, refract: params.refract, idle: params.idle, timeScale: params.time });
+  $('json').value = JSON.stringify(o, null, 1);
 }
 Object.keys(ids).forEach((k) => {
   const s = $('s' + ids[k]), o = $('o' + ids[k]);
   const upd = () => { params[k] = parseFloat(s.value); o.textContent = fmt[k](params[k]); syncValues(); };
   s.addEventListener('input', upd); upd();
 });
-// Liquid row: sets the material/medium (LIQUIDS entry) and resets the four override sliders to its defaults.
-// It never touches the DROP / WAVE / EROSION sliders.
+// Surface row: sets the material (LIQUIDS or SOLIDS entry) and resets the four override sliders to its defaults.
+// It never touches the DROP / WAVE / EROSION sliders. Changing the family (liquid <-> solid) starts a fresh piece.
 function advText() {
+  if (family === 'solid') {
+    const S = solid;
+    return ['solid         ' + S.name,
+            'fresnel base  ' + S.fresnelBase, 'fresnel power ' + S.fresnelPow, 'specular pow  ' + S.specPow,
+            'brush         ' + S.brushStr + ' @ ' + S.brushDir + ' rad',
+            'tint          ' + S.tint.join(', '), 'bevel         ' + S.bevel,
+            'oxide cover   ' + S.cover.join(' .. '), 'patch         ' + S.patchTh.join(' .. ') + ' x' + S.patchAmt, 'pits          x' + S.pitAmt,
+            'crack speed   ' + CRACK_V + ' uv/s per wave-speed unit', 'crack length  ' + CRACK_L0 + ' uv x sqrt(size)',
+            'core width    ' + CORE_W + ' uv (tip x' + TIP_W + ')', 'erosion band  ' + BAND_W + ' uv half-width',
+            'defaults      reflect ' + S.fresnelBase + ', refract ' + S.refract + ', idle ' + S.idle + ', time ' + S.time].join('\n');
+  }
   const L = liquid;
   return ['liquid        ' + L.name,
           'tension       ' + L.tension, 'viscosity     ' + L.visc,
@@ -898,15 +1367,26 @@ function advText() {
           'idle amp      x' + L.idleAmp, 'idle scale    x' + L.idleScale, 'idle rate     x' + L.idleRate,
           'defaults      reflect ' + L.fresnelBase + ', refract ' + L.refract + ', idle ' + L.idle + ', time ' + L.time].join('\n');
 }
-function applyLiquid(key) {
-  liquidKey = key; liquid = LIQUIDS[key];
-  const set = { reflect: liquid.fresnelBase, refract: liquid.refract, idle: liquid.idle, time: liquid.time };
+function applySurface(key) {
+  key = SURFACE_ALIAS[key] || key;
+  const isSolid = !!SOLIDS[key];
+  if (!isSolid && !LIQUIDS[key]) return false;
+  const fam = isSolid ? 'solid' : 'liquid', changed = fam !== family;
+  if (isSolid) solid = SOLIDS[key]; else { liquidKey = key; liquid = LIQUIDS[key]; }
+  family = fam;
+  const d = isSolid ? solid : liquid;
+  const set = { reflect: d.fresnelBase, refract: d.refract, idle: d.idle, time: d.time };
   Object.keys(set).forEach((k) => { const s = $('s' + ids[k]); s.value = set[k]; s.dispatchEvent(new Event('input')); });
-  document.querySelectorAll('[data-liquid]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.liquid === key ? 'true' : 'false'));
+  if (changed) restart();
+  document.querySelectorAll('[data-surface]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.surface === key ? 'true' : 'false'));
+  $('sDamp').disabled = isSolid; $('cDamp').classList.toggle('off', isSolid); $('dnote').hidden = !isSolid;
+  $('oSpeed').textContent = fmt.speed(params.speed);
+  $('fnote').textContent = isSolid ? 'Solid surface: a drop opens a crack cluster instead of a wave. Cracks grow, never heal, and erode along themselves.' : '';
   $('advNum').textContent = advText();
   syncValues();
+  return true;
 }
-document.querySelectorAll('[data-liquid]').forEach((b) => b.addEventListener('click', () => applyLiquid(b.dataset.liquid)));
+document.querySelectorAll('[data-surface]').forEach((b) => b.addEventListener('click', () => applySurface(b.dataset.surface)));
 
 // Auto events: off by default. Switching on skips the events that are already in the past.
 function setAuto(on) {
@@ -949,7 +1429,9 @@ window.XANADU = {
   params,
   setEvents(list) { EVENTS = list.map(dropFromEvent).sort((a, b) => a.t - b.t); restart(); },
   setAuto,
-  applyLiquid,
+  applyLiquid: applySurface,
+  applySurface,
+  SOLIDS,
   LIQUIDS,
   RULE
 };
@@ -960,7 +1442,8 @@ window.XANADU = {
 try {
   useProcedural();
   restart();
-  applyLiquid('mercury');
+  applySurface('mercury');
+  { const sm = /[#?&]surface=([a-z-]+)/.exec(location.href); if (sm) applySurface(sm[1]); }
   $('tAuto').checked = false;
   // debug: #seek=NN fast-forwards NN seconds of sim time before the first frame
   // debug: #auto=1 switches auto events on before the seek
