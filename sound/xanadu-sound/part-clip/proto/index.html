@@ -27,7 +27,11 @@ details[open] summary::after{content:"\2212"}
 button,.filebtn{flex:1;font:inherit;font-size:15px;color:var(--fg);background:#1b1d21;border:1px solid #30343a;
   border-radius:8px;padding:11px 8px;min-height:44px;text-align:center;cursor:pointer;-webkit-appearance:none;appearance:none}
 button:active,.filebtn:active{background:#262930}
-.ctl{display:grid;grid-template-columns:92px 1fr 52px;align-items:center;gap:8px;margin:0 0 6px;min-height:34px}
+.ctl{display:grid;grid-template-columns:92px 1fr 56px;align-items:center;gap:8px;margin:0 0 6px;min-height:34px}
+.grp{margin:14px 0 6px;font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.row button.sm{font-size:14px}
+textarea{display:block;width:100%;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--fg);
+  background:#101114;border:1px solid #30343a;border-radius:8px;padding:10px;resize:none;margin:0 0 12px}
 .ctl label{color:var(--dim);font-size:13px}
 .ctl output{text-align:right;font-size:12px;color:var(--fg);font-variant-numeric:tabular-nums}
 input[type=range]{width:100%;margin:0;height:30px;accent-color:#9aa6b8;background:transparent}
@@ -56,11 +60,27 @@ footer{padding:14px 0 0;color:var(--dim);font-size:11.5px;letter-spacing:.03em;t
         <button id="bRestart" type="button">Restart</button>
         <button id="bNext" type="button">Next event</button>
       </div>
+      <div class="grp">Presets</div>
+      <div class="row">
+        <button class="sm" id="pStill" type="button" data-preset="still">Still water</button>
+        <button class="sm" id="pMerc" type="button" data-preset="mercury">Mercury</button>
+        <button class="sm" id="pDef" type="button" data-preset="def">Default</button>
+      </div>
+      <div class="grp">Drop (tap the surface to drop)</div>
+      <div class="ctl"><label for="sSize">Drop size</label><input id="sSize" type="range" min="0.05" max="2" step="0.05" value="0.5"><output id="oSize"></output></div>
+      <div class="ctl"><label for="sAttack">Attack (s)</label><input id="sAttack" type="range" min="0" max="1.5" step="0.05" value="0.25"><output id="oAttack"></output></div>
+      <div class="ctl"><label for="sWave">Wavelength</label><input id="sWave" type="range" min="0.03" max="0.4" step="0.005" value="0.16"><output id="oWave"></output></div>
+      <div class="ctl"><label for="sRings">Ring count</label><input id="sRings" type="range" min="1" max="5" step="0.5" value="2"><output id="oRings"></output></div>
+      <div class="grp">Wave</div>
+      <div class="ctl"><label for="sSpeed">Wave speed</label><input id="sSpeed" type="range" min="0.05" max="1.2" step="0.01" value="0.3"><output id="oSpeed"></output></div>
+      <div class="ctl"><label for="sDamp">Damping</label><input id="sDamp" type="range" min="0" max="0.06" step="0.0005" value="0.008"><output id="oDamp"></output></div>
+      <div class="ctl"><label for="sSpread">Spread</label><input id="sSpread" type="range" min="0.1" max="2" step="0.05" value="0.6"><output id="oSpread"></output></div>
+      <div class="ctl"><label for="sLag">Reveal lag (s)</label><input id="sLag" type="range" min="0" max="3" step="0.05" value="0.6"><output id="oLag"></output></div>
+      <p class="note" id="wnote"></p>
+      <div class="grp">Surface</div>
       <div class="ctl"><label for="sReflect">Reflect</label><input id="sReflect" type="range" min="0" max="1" step="0.01" value="0.25"><output id="oReflect"></output></div>
       <div class="ctl"><label for="sRefract">Refract</label><input id="sRefract" type="range" min="0" max="3" step="0.05" value="0.8"><output id="oRefract"></output></div>
-      <div class="ctl"><label for="sDamp">Damping</label><input id="sDamp" type="range" min="0" max="0.03" step="0.0005" value="0.008"><output id="oDamp"></output></div>
       <div class="ctl"><label for="sIdle">Idle ripple</label><input id="sIdle" type="range" min="0" max="0.02" step="0.0005" value="0.004"><output id="oIdle"></output></div>
-      <div class="ctl"><label for="sSize">Drop size</label><input id="sSize" type="range" min="0.5" max="2" step="0.05" value="1"><output id="oSize"></output></div>
       <div class="ctl"><label for="sTime">Time scale</label><input id="sTime" type="range" min="0.25" max="4" step="0.05" value="1"><output id="oTime"></output></div>
       <div class="row" style="margin-top:8px">
         <label class="filebtn" for="fFiles">Upload 1–4 images</label>
@@ -68,6 +88,11 @@ footer{padding:14px 0 0;color:var(--dim);font-size:11.5px;letter-spacing:.03em;t
         <button id="bProc" type="button">Procedural</button>
       </div>
       <p class="note" id="vinfo">Variants: 4 procedural placeholders.</p>
+    </details>
+    <details open>
+      <summary>Values</summary>
+      <p class="note">Copy these values into the project file.</p>
+      <textarea id="json" readonly rows="15" spellcheck="false" aria-label="Current parameter set as JSON"></textarea>
     </details>
     <footer>Pärt clip · prototype · 31 Oct 2026 · private study · no audio</footer>
   </div>
@@ -85,13 +110,18 @@ footer{padding:14px 0 0;color:var(--dim);font-size:11.5px;letter-spacing:.03em;t
 const GRID     = 256;       // heightfield resolution (256 or 512)
 const VAR_RES  = 512;       // each profile variant, square
 const DT       = 1 / 60;    // fixed substep (s)
-const ITER     = 2;         // wave iterations per substep
-const C2       = 0.42;      // (c*dt/dx)^2 per iteration; must stay < 0.5 for stability
+const ITER_MAX = 6;         // max wave iterations per substep (chosen from waveSpeed)
+const CFL      = 0.7;       // max cells travelled per iteration; C2 = CFL^2 = 0.49 < 0.5 (2D stability limit)
 const MAXSTEPS = 32;        // catch-up cap per frame (sim slows instead of freezing)
 const DURATION = 60;        // length of the synthetic event list (s)
-const REVEAL   = 0.8;       // mask follow speed (variants per second): reveal lags the impact
-const DROP_R0  = 0.10;      // drop radius in uv units at size 1.0 (scale slider multiplies)
-const DROP_AMP = 0.8;       // impulse depth at size 1.0 (scale slider multiplies)
+const FOLLOW   = 6.0;       // shown phase follows the target at most this fast (variants/s); the lag itself is the revealLag slider
+const MAXD     = 16;        // drops kept alive at once (impulse, spread and reveal are per drop)
+const SIM_LIFE = 20;        // seconds a drop stays in the list (spread reference + reveal window)
+const SPREAD_OFF = 2.0;     // spread slider maximum = off
+const S_REF    = 0.5;       // reference drop size (slider default): amp = DROP_AMP * s/S_REF, radius ~ sqrt(s/S_REF)
+const DROP_AMP = 0.8;       // impulse depth at the reference size
+const EDGE_DAMP = 0.07;     // border sponge, per iteration at 2 iterations/substep
+const MIN_LAM  = 6 / GRID;  // smallest effective wavelength (6 cells) to keep the ring resolved
 const SURFACE_TONE = [140, 144, 150];   // ground colour of variants; letterbox uses the same
 
 const $ = (id) => document.getElementById(id);
@@ -275,11 +305,16 @@ void main(){
 
 // Wave step (Verlet): state.xy = (height, previous height). Drop impulse is added to both
 // so it starts at rest; the sponge near the border absorbs reflections.
+// Impulse: damped radial cosine  cos(2 pi r / lambda) * exp(-r^2 / sigma^2), delivered as small
+// increments over the attack time (uDb = this pass's increment per drop slot).
+// Spread: extra damping that grows with the squared distance to the nearest live drop.
 const FS_SIM = `#version 300 es
 precision highp float; precision highp sampler2D;
+#define MAXD ${MAXD}
 uniform sampler2D uState;
-uniform float uC2, uDamp, uSize;
-uniform vec4 uDrop;            // xy = centre (uv, v up), z = radius (uv), w = amplitude (0 = none)
+uniform float uC2, uDamp, uEdge, uSpread, uRs, uSize;
+uniform vec4 uDa[MAXD];        // x, y (uv, v up), sigma, wavelength; sigma <= 0 = empty slot
+uniform float uDb[MAXD];       // signed height increment for this pass
 in vec2 vUv; out vec4 o;
 void main(){
   ivec2 ip = ivec2(gl_FragCoord.xy);
@@ -292,13 +327,19 @@ void main(){
   float lap = hl + hr + hd + hu - 4.0 * s.x;
   vec2 uv = gl_FragCoord.xy / uSize;
   float edge = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
-  float damp = uDamp + (1.0 - smoothstep(0.0, 0.10, edge)) * 0.07;
-  float hn = s.x + (s.x - s.y) * (1.0 - damp) + uC2 * lap;
-  float a = 0.0;
-  if (uDrop.w != 0.0) {
-    float d = distance(uv, uDrop.xy) / uDrop.z;
-    if (d < 1.0) a = uDrop.w * (0.5 + 0.5 * cos(3.14159265 * d));
+  float dmin = 1e3, a = 0.0;
+  for (int i = 0; i < MAXD; i++) {
+    vec4 q = uDa[i];
+    if (q.z <= 0.0) continue;
+    float r = distance(uv, q.xy);
+    dmin = min(dmin, r);
+    float db = uDb[i];
+    if (db != 0.0 && r < 2.6 * q.z) a += db * cos(6.28318531 * r / q.w) * exp(-(r * r) / (q.z * q.z));
   }
+  float rr = dmin / uRs;
+  float spr = (dmin < 100.0) ? uSpread * rr * rr : 0.0;
+  float damp = min(uDamp + (1.0 - smoothstep(0.0, 0.10, edge)) * uEdge + spr, 0.9);
+  float hn = s.x + (s.x - s.y) * (1.0 - damp) + uC2 * lap;
   o = vec4(hn + a, s.x + a, 0.0, 1.0);
 }`;
 
@@ -307,8 +348,10 @@ void main(){
 // Encoding as an angle makes the texture safely bilinear-filterable across the wrap.
 const FS_MASK = `#version 300 es
 precision highp float; precision highp sampler2D;
+#define MAXD ${MAXD}
 uniform sampler2D uIn;
-uniform vec4 uDrop;            // xy centre (uv), z radius, w active
+uniform vec4 uMa[MAXD];        // x, y (uv), reveal radius, active
+uniform vec4 uMb[MAXD];        // age at step start, age at step end, reveal duration, wave speed (uv/s)
 uniform float uN, uStep, uSize;
 out vec4 o;
 void main(){
@@ -316,11 +359,24 @@ void main(){
   float k = 6.28318531 / uN;
   float pt = mod(atan(m.y, m.x) / k + uN, uN);
   float ps = mod(atan(m.w, m.z) / k + uN, uN);
-  if (uDrop.w > 0.5) {
-    vec2 uv = gl_FragCoord.xy / uSize;
-    float w = 1.0 - smoothstep(0.65 * uDrop.z, uDrop.z, distance(uv, uDrop.xy));   // feathered
-    pt = mod(pt + w, uN);                                                           // advance to next variant
+  // Each drop advances the target by an INCREMENT of  feather(r) * (P(age1) - P(age0)),
+  // P = smoothstep of (age - r/c) / duration: nothing at the touch point at age 0, the change
+  // starts at a texel when the ring front arrives (r/c) and takes the reveal duration to settle.
+  // The increments telescope, so the full advance is exactly feather(r) (one variant at most).
+  vec2 uv = gl_FragCoord.xy / uSize;
+  float adv = 0.0;
+  for (int i = 0; i < MAXD; i++) {
+    vec4 a = uMa[i];
+    if (a.w < 0.5) continue;
+    float r = distance(uv, a.xy);
+    if (r >= a.z) continue;
+    vec4 b = uMb[i];
+    float tr = r / b.w;
+    float p0 = smoothstep(0.0, 1.0, clamp((b.x - tr) / b.z, 0.0, 1.0));
+    float p1 = smoothstep(0.0, 1.0, clamp((b.y - tr) / b.z, 0.0, 1.0));
+    adv += (1.0 - smoothstep(0.65 * a.z, a.z, r)) * (p1 - p0);
   }
+  pt = mod(pt + adv, uN);
   float fwd = mod(pt - ps + uN, uN);
   if (fwd > uN - 0.01) fwd = 0.0;
   float st = min(fwd, uStep);
@@ -429,8 +485,8 @@ function makeProg(fs, names) {
 
 let progSim, progMask, progDerive, progDisplay;
 try {
-  progSim = makeProg(FS_SIM, ['uState', 'uC2', 'uDamp', 'uSize', 'uDrop']);
-  progMask = makeProg(FS_MASK, ['uIn', 'uDrop', 'uN', 'uStep', 'uSize']);
+  progSim = makeProg(FS_SIM, ['uState', 'uC2', 'uDamp', 'uEdge', 'uSpread', 'uRs', 'uSize', 'uDa', 'uDb']);
+  progMask = makeProg(FS_MASK, ['uIn', 'uMa', 'uMb', 'uN', 'uStep', 'uSize']);
   progDerive = makeProg(FS_DERIVE, ['uState', 'uSize']);
   progDisplay = makeProg(FS_DISPLAY, ['uDerived', 'uMask', 'uVar', 'uReflect', 'uRefract', 'uIdle', 'uTime', 'uN', 'uW']);
 } catch (err) { fail(String(err.message || err)); return; }
@@ -503,9 +559,62 @@ const idleW = (() => {
 /* ======================================================================
    Simulation (fixed 1/60 s substeps) and rendering
    ====================================================================== */
-const params = { reflect: 0.25, refract: 0.8, damp: 0.008, idle: 0.004, size: 1, time: 1 };
+const PRESETS = {
+  def:     { size: 0.5,  attack: 0.25, wave: 0.16, rings: 2, speed: 0.30, damp: 0.008, spread: 0.6,  lag: 0.6, reflect: 0.25, refract: 0.8, idle: 0.004, time: 1 },
+  still:   { size: 0.7,  attack: 1.2,  wave: 0.20, rings: 1, speed: 0.12, damp: 0.006, spread: 0.45, lag: 1.8, reflect: 0.15, refract: 0.5, idle: 0.002, time: 1 },
+  mercury: { size: 0.4,  attack: 0.05, wave: 0.05, rings: 4, speed: 0.65, damp: 0.003, spread: 1.4,  lag: 0.3, reflect: 0.70, refract: 1.2, idle: 0.004, time: 1 }
+};
+const params = Object.assign({}, PRESETS.def);
 let playing = true, stepCount = 0, acc = 0, evIdx = 0, evCount = 0;
-let manualQ = [], manualN = 0;
+let manualQ = [], manualN = 0, tapN = 0;
+let drops = [];
+const aDa = new Float32Array(MAXD * 4), aDb = new Float32Array(MAXD), zeroDb = new Float32Array(MAXD);
+const aMa = new Float32Array(MAXD * 4), aMb = new Float32Array(MAXD * 4);
+
+// Wave speed (uv/s) -> iterations per substep n and C2 per iteration, clamped to the stability limit.
+function simState() {
+  const cps = params.speed * GRID * DT;                               // cells per substep requested
+  const n = Math.min(ITER_MAX, Math.max(1, Math.ceil(cps / CFL - 1e-9)));
+  const cpsEff = Math.min(cps, n * CFL);                              // clamp: <= CFL cells per iteration
+  const c = cpsEff / (GRID * DT), per = cpsEff / n;
+  // spread: extra damping G*(d/Rs)^2 per iteration; G chosen so a wave travelling Rs loses ~exp(-3)
+  const iterPerUv = n / DT / c;
+  const G = params.spread >= SPREAD_OFF - 1e-9 ? 0 : Math.min(0.4, 18 / (iterPerUv * params.spread));
+  return { n, c, C2: per * per, per, clamped: cps > cpsEff + 1e-9,
+           damp: 1 - Math.pow(1 - params.damp, 2 / n),                // same decay per second whatever n
+           edge: 1 - Math.pow(1 - EDGE_DAMP, 2 / n), G };
+}
+const ramp = (a, att) => (a <= 0 ? 0 : att <= 0 || a >= att ? 1 : (() => { const x = a / att; return x * x * (3 - 2 * x); })());
+
+// Snapshot of the current parameters for one drop (so later slider moves don't corrupt its reveal).
+function makeDrop(ev) {
+  const k = (ev.size * params.size) / S_REF, sc = Math.sqrt(k);
+  const lam = Math.max(params.wave * sc, MIN_LAM);                    // radius ~ sqrt(size)
+  const sig = lam * 0.5 * (params.rings + 0.5);                       // envelope width: ringCount windows the cosine
+  const st = simState();
+  return { x: ev.x, y: 1 - ev.y, t0: stepCount, amp: -DROP_AMP * k, lam, sig, att: params.attack,
+           Rrev: Math.min(0.7, Math.max(0.04, 1.5 * sig)), dur: Math.max(0.04, params.attack + params.lag), c: st.c };
+}
+function addDrop(d) {
+  drops = drops.filter((q) => (stepCount - q.t0) * DT < SIM_LIFE);
+  if (drops.length >= MAXD) drops.shift();
+  drops.push(d);
+}
+function fillDrops() {
+  aDa.fill(0); aDb.fill(0); aMa.fill(0); aMb.fill(0);
+  for (let i = 0; i < drops.length; i++) {
+    const d = drops[i];
+    const a0 = (stepCount - d.t0) * DT, a1 = (stepCount + 1 - d.t0) * DT;
+    if (a0 < SIM_LIFE) {
+      aDa.set([d.x, d.y, d.sig, d.lam], i * 4);
+      aDb[i] = d.amp * (ramp(a1, d.att) - ramp(a0, d.att));              // attack: 0 -> peak, smoothstep
+    }
+    if (a0 < d.dur + d.Rrev / d.c + 0.1) {
+      aMa.set([d.x, d.y, d.Rrev, 1], i * 4);
+      aMb.set([a0, a1, d.dur, d.c], i * 4);
+    }
+  }
+}
 
 function bindTex(unit, target, tex, loc) {
   gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(target, tex); gl.uniform1i(loc, unit);
@@ -517,27 +626,22 @@ function pass(prog, target, size) {
   return prog;
 }
 
-function simPass(drop) {
+function simPass(sp, apply) {
   const P = pass(progSim, state.nxt, GRID);
   bindTex(0, gl.TEXTURE_2D, state.cur.tex, P.u.uState);
-  gl.uniform1f(P.u.uC2, C2); gl.uniform1f(P.u.uDamp, params.damp); gl.uniform1f(P.u.uSize, GRID);
-  gl.uniform4f(P.u.uDrop, drop ? drop[0] : 0, drop ? drop[1] : 0, drop ? drop[2] : 1, drop ? drop[3] : 0);
+  gl.uniform1f(P.u.uC2, sp.C2); gl.uniform1f(P.u.uDamp, sp.damp); gl.uniform1f(P.u.uEdge, sp.edge);
+  gl.uniform1f(P.u.uSpread, sp.G); gl.uniform1f(P.u.uRs, params.spread); gl.uniform1f(P.u.uSize, GRID);
+  gl.uniform4fv(P.u.uDa, aDa); gl.uniform1fv(P.u.uDb, apply ? aDb : zeroDb);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   state.flip();
 }
-function maskPass(drop) {
+function maskPass() {
   const P = pass(progMask, mask.nxt, GRID);
   bindTex(0, gl.TEXTURE_2D, mask.cur.tex, P.u.uIn);
-  gl.uniform4f(P.u.uDrop, drop ? drop[0] : 0, drop ? drop[1] : 0, drop ? drop[2] : 1, drop ? 1 : 0);
-  gl.uniform1f(P.u.uN, variantN); gl.uniform1f(P.u.uStep, REVEAL * DT); gl.uniform1f(P.u.uSize, GRID);
+  gl.uniform4fv(P.u.uMa, aMa); gl.uniform4fv(P.u.uMb, aMb);
+  gl.uniform1f(P.u.uN, variantN); gl.uniform1f(P.u.uStep, FOLLOW * DT); gl.uniform1f(P.u.uSize, GRID);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   mask.flip();
-}
-
-// event {x,y (image space, y down), size} -> [u, v (v up), radius, amplitude]
-function dropUniforms(ev) {
-  const s = ev.size * params.size;
-  return [ev.x, 1 - ev.y, DROP_R0 * s, -DROP_AMP * s];
 }
 
 function substep() {
@@ -545,10 +649,12 @@ function substep() {
   let ev = null;
   if (manualQ.length) { ev = manualQ.shift(); evCount++; }
   else if (evIdx < EVENTS.length && EVENTS[evIdx].t <= t + 1e-9) { ev = EVENTS[evIdx++]; evCount++; }
-  const d = ev ? dropUniforms(ev) : null;
-  simPass(d);
-  for (let i = 1; i < ITER; i++) simPass(null);
-  maskPass(d);
+  if (ev) addDrop(makeDrop(ev));
+  fillDrops();
+  const sp = simState();
+  simPass(sp, true);                                   // impulse increment lands in the first iteration only
+  for (let i = 1; i < sp.n; i++) simPass(sp, false);
+  maskPass();
   stepCount++;
 }
 
@@ -560,7 +666,7 @@ function restart() {
   state.t.forEach((t) => clearTarget(t, 0, 0, 0, 1));
   mask.t.forEach((t) => clearTarget(t, 1, 0, 1, 0));
   clearTarget(derived, 0, 0, 0, 1);
-  stepCount = 0; acc = 0; evIdx = 0; evCount = 0; manualQ = []; manualN = 0;
+  stepCount = 0; acc = 0; evIdx = 0; evCount = 0; manualQ = []; manualN = 0; tapN = 0; drops = [];
 }
 
 // Manual drop: same position rule, driven by a counter so it is reproducible too.
@@ -571,6 +677,24 @@ function nextEvent() {
   manualQ.push(e);
   if (!playing) substep();     // paused: advance exactly one substep so the drop lands
 }
+
+// Tap / click on the canvas: drop at that point with the current drop size (event size 1 -> slider value).
+function tapDrop(cx, cy) {
+  const r = canvas.getBoundingClientRect();
+  const x = (cx - r.left) / r.width, y = (cy - r.top) / r.height;
+  if (x < 0 || x > 1 || y < 0 || y > 1) return;
+  manualQ.push({ t: stepCount * DT, x, y, size: 1, pitch: 0, vel: 1 });
+  tapN++;
+  if (!playing) substep();
+}
+let down = null;
+canvas.addEventListener('pointerdown', (e) => { down = { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now() }; });
+canvas.addEventListener('pointercancel', () => { down = null; });
+canvas.addEventListener('pointerup', (e) => {
+  const d = down; down = null;
+  if (!d || d.id !== e.pointerId) return;
+  if (Math.hypot(e.clientX - d.x, e.clientY - d.y) < 12 && performance.now() - d.t < 700) tapDrop(e.clientX, e.clientY);
+});
 
 function render() {
   // size the backing store
@@ -607,7 +731,7 @@ function frame(now) {
   const key = Math.floor(stepCount / 6) + ':' + evCount;
   if (key !== hudKey) {
     hudKey = key;
-    $('hud').textContent = (stepCount * DT).toFixed(1) + ' s · ' + evCount + ' drops' + (manualN ? ' (' + manualN + ' manual)' : '');
+    $('hud').textContent = (stepCount * DT).toFixed(1) + ' s · ' + evCount + ' drops' + ((manualN + tapN) ? ' (' + (manualN + tapN) + ' manual)' : '');
   }
   requestAnimationFrame(frame);
 }
@@ -616,13 +740,36 @@ function frame(now) {
    UI
    ====================================================================== */
 const fmt = { reflect: (v) => v.toFixed(2), refract: (v) => v.toFixed(2), damp: (v) => v.toFixed(4),
-              idle: (v) => v.toFixed(4), size: (v) => v.toFixed(2) + 'x', time: (v) => v.toFixed(2) + 'x' };
-const ids = { reflect: 'Reflect', refract: 'Refract', damp: 'Damp', idle: 'Idle', size: 'Size', time: 'Time' };
+              idle: (v) => v.toFixed(4), size: (v) => v.toFixed(2), time: (v) => v.toFixed(2) + 'x',
+              speed: (v) => { const s = simState(); return s.c.toFixed(2) + (s.clamped ? '*' : ''); },
+              wave: (v) => v.toFixed(3), rings: (v) => v.toFixed(1), attack: (v) => v.toFixed(2),
+              spread: (v) => (v >= SPREAD_OFF - 1e-9 ? 'off' : v.toFixed(2)), lag: (v) => v.toFixed(2) };
+const ids = { size: 'Size', attack: 'Attack', wave: 'Wave', rings: 'Rings', speed: 'Speed', damp: 'Damp', spread: 'Spread',
+              lag: 'Lag', reflect: 'Reflect', refract: 'Refract', idle: 'Idle', time: 'Time' };
+
+const r3 = (v) => Math.round(v * 1000) / 1000;
+function syncValues() {
+  const st = simState();
+  $('wnote').textContent = 'wave speed ' + (st.clamped ? 'set ' + params.speed.toFixed(2) + ', clamped to ' + st.c.toFixed(3) + ' (stability)' : st.c.toFixed(3)) +
+    ' uv/s · ' + st.n + ' iter/step · C2 ' + st.C2.toFixed(3) + ' (limit 0.5)';
+  $('json').value = JSON.stringify({
+    dropSize: params.size, attack: params.attack, wavelength: params.wave, ringCount: params.rings,
+    waveSpeed: params.speed, waveSpeedEffective: r3(st.c), damping: params.damp,
+    spread: params.spread >= SPREAD_OFF - 1e-9 ? 'off' : params.spread, revealLag: params.lag,
+    reflect: params.reflect, refract: params.refract, idle: params.idle, timeScale: params.time
+  }, null, 1);
+}
 Object.keys(ids).forEach((k) => {
   const s = $('s' + ids[k]), o = $('o' + ids[k]);
-  const upd = () => { params[k] = parseFloat(s.value); o.textContent = fmt[k](params[k]); };
+  const upd = () => { params[k] = parseFloat(s.value); o.textContent = fmt[k](params[k]); syncValues(); };
   s.addEventListener('input', upd); upd();
 });
+document.querySelectorAll('[data-preset]').forEach((b) => b.addEventListener('click', () => {
+  const P = PRESETS[b.dataset.preset];
+  Object.keys(P).forEach((k) => { const s = $('s' + ids[k]); s.value = P[k]; s.dispatchEvent(new Event('input')); });
+}));
+$('json').addEventListener('focus', (e) => e.target.select());
+$('json').addEventListener('click', (e) => e.target.select());
 $('bPlay').addEventListener('click', () => { playing = !playing; $('bPlay').textContent = playing ? 'Pause' : 'Play'; });
 $('bRestart').addEventListener('click', () => { restart(); playing = true; $('bPlay').textContent = 'Pause'; });
 $('bNext').addEventListener('click', nextEvent);
@@ -651,6 +798,7 @@ $('fFiles').addEventListener('change', async (e) => {
 // Console hook for a real events.json (array of {t, pitch, vel}).
 window.XANADU = {
   get EVENTS() { return EVENTS; },
+  params,
   setEvents(list) { EVENTS = list.map(dropFromEvent).sort((a, b) => a.t - b.t); restart(); },
   RULE
 };
