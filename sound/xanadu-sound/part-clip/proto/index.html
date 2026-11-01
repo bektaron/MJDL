@@ -85,6 +85,8 @@ pre#advNum{margin:0 0 8px;padding:10px;font:12px/1.5 ui-monospace,SFMono-Regular
         <button class="sm" type="button" data-surface="gallium" aria-pressed="false">Gallium</button>
         <button class="sm" type="button" data-surface="silver" aria-pressed="false">Molten silver</button>
         <button class="sm" type="button" data-surface="oil" aria-pressed="false">Oil-slick steel</button>
+        <button class="sm" type="button" data-surface="gold" aria-pressed="false">Molten gold</button>
+        <button class="sm" type="button" data-surface="lead" aria-pressed="false">Lead</button>
         <button class="sm" type="button" data-surface="rust" aria-pressed="false">Rusted iron</button>
         <button class="sm" type="button" data-surface="bronze" aria-pressed="false">Tarnished bronze</button>
       </div>
@@ -111,18 +113,35 @@ pre#advNum{margin:0 0 8px;padding:10px;font:12px/1.5 ui-monospace,SFMono-Regular
       <div class="ctl"><label for="sLag">Reveal lag (s)</label><input id="sLag" type="range" min="0" max="3" step="0.05" value="0.6"><output id="oLag"></output></div>
       <p class="note" id="wnote"></p>
       <div class="grp">Erosion</div>
-      <div class="ctl"><label for="sSoft">Erode softness</label><input id="sSoft" type="range" min="0" max="1" step="0.01" value="0.5"><output id="oSoft"></output></div>
+      <div class="ctl"><label for="sWear">Wear softness</label><input id="sWear" type="range" min="0" max="1" step="0.01" value="0.5"><output id="oWear"></output></div>
+      <div class="ctl"><label for="sESharp">Edge sharpness</label><input id="sESharp" type="range" min="0" max="1" step="0.01" value="0.8"><output id="oESharp"></output></div>
+      <div class="ctl" id="cEW"><label for="sEW">Edge width</label><input id="sEW" type="range" min="0.001" max="0.08" step="0.0005" value="0.04"><output id="oEW"></output></div>
+      <div class="ctl" id="cEH"><label for="sEH">Edge height</label><input id="sEH" type="range" min="0" max="1" step="0.01" value="0.3"><output id="oEH"></output></div>
+      <p class="note" id="enote" hidden>edge width / height shape the bevel of liquid surfaces only</p>
       <div class="row" style="margin-top:8px">
         <label class="filebtn" for="fFiles">Upload 1–4 images</label>
         <input id="fFiles" type="file" accept="image/*" multiple>
         <button id="bProc" type="button">Procedural</button>
       </div>
       <p class="note" id="vinfo">Variants: 4 procedural placeholders, then white.</p>
+      <div class="grp">Layer thickness (depth units)</div>
+      <div class="ctl"><label for="sTh0">Layer 1</label><input id="sTh0" type="range" min="0.2" max="3" step="0.05" value="1"><output id="oTh0"></output></div>
+      <div class="ctl"><label for="sTh1">Layer 2</label><input id="sTh1" type="range" min="0.2" max="3" step="0.05" value="1"><output id="oTh1"></output></div>
+      <div class="ctl"><label for="sTh2">Layer 3</label><input id="sTh2" type="range" min="0.2" max="3" step="0.05" value="1"><output id="oTh2"></output></div>
+      <div class="ctl"><label for="sTh3">Layer 4</label><input id="sTh3" type="range" min="0.2" max="3" step="0.05" value="1"><output id="oTh3"></output></div>
+      <div class="ctl"><label for="sDScale">Depth scale</label><input id="sDScale" type="range" min="0" max="1" step="0.01" value="0.3"><output id="oDScale"></output></div>
+      <div class="grp">Light</div>
+      <div class="ctl"><label for="sLAz">Azimuth</label><input id="sLAz" type="range" min="0" max="360" step="0.1" value="129.8"><output id="oLAz"></output></div>
+      <div class="ctl"><label for="sLEl">Elevation</label><input id="sLEl" type="range" min="5" max="85" step="0.1" value="39.8"><output id="oLEl"></output></div>
+      <div class="ctl"><label for="sLInt">Intensity</label><input id="sLInt" type="range" min="0" max="3" step="0.05" value="1"><output id="oLInt"></output></div>
+      <div class="ctl"><label for="sLK">Colour temp.</label><input id="sLK" type="range" min="2000" max="10000" step="100" value="6500"><output id="oLK"></output></div>
+      <div class="ctl"><label for="sLAmb">Ambient</label><input id="sLAmb" type="range" min="0" max="1" step="0.01" value="0.55"><output id="oLAmb"></output></div>
+      <p class="note">Azimuth: direction the light comes from, 0° right · 90° top · 180° left · 270° bottom. Azimuth, elevation and ambient start from the surface's own light until moved.</p>
     </details>
     <details open>
       <summary>Values</summary>
       <p class="note">Copy these values into the project file.</p>
-      <textarea id="json" readonly rows="22" spellcheck="false" aria-label="Current parameter set as JSON"></textarea>
+      <textarea id="json" readonly rows="36" spellcheck="false" aria-label="Current parameter set as JSON"></textarea>
     </details>
     <footer>Pärt clip · prototype · 31 Oct 2026 · private study · no audio</footer>
   </div>
@@ -144,9 +163,11 @@ const ITER_MAX = 6;         // max wave iterations per substep (chosen from wave
 const CFL      = 0.7;       // max cells travelled per iteration; C2 = CFL^2 = 0.49 < 0.5 (2D stability limit)
 const MAXSTEPS = 32;        // catch-up cap per frame (sim slows instead of freezing)
 const DURATION = 60;        // length of the synthetic event list (s)
-const FOLLOW   = 6.0;       // shown erosion value follows the target at most this fast (stack positions/s); the lag itself is the revealLag slider
-const EDGE_K = 1.0;         // strength of the slope-driven wear-through bevel
-const ERODE_GAIN = 0.5;     // erosion at the drop centre = ERODE_GAIN * drop-size ratio, clamped to 0.05..1 stack positions (so one default drop is half a layer)
+const FOLLOW   = 6.0;       // shown erosion value follows the target at most this fast (depth units/s); the lag itself is the revealLag slider
+const ERODE_GAIN = 0.5;     // erosion at the drop centre = ERODE_GAIN * drop-size ratio, clamped to 0.05..1 depth units (so one default drop is half a default layer)
+const FIELD_RES = 512;      // erosion / mask field (square). Falls back to GRID where MAX_TEXTURE_SIZE < 4096 or the float target fails at this size; see `fieldRes`
+const DEPTH_UNIT = 0.0133;  // visible depth (uv) of one depth unit at Depth scale = 1; the default scale 0.3 makes one layer ~0.004 uv, the depth of a spall footprint
+const DEPTH_G = 0.0015;     // liquid: slope per uv of (depth scale x depth), in the units of the wave slope field
 const CRACK_RES = 512;      // crack map resolution (512 or 256)
 const MAXD     = 16;        // drops kept alive at once (impulse, spread and reveal are per drop)
 const SIM_LIFE = 20;        // seconds a drop stays in the list (spread reference + reveal window)
@@ -419,8 +440,10 @@ void main(){
 }`;
 
 // Erosion mask. Each texel keeps TWO continuous values (not an index): .x = target, .y = shown.
-// Value p in [0, uMax]: p = 0 is the top variant, p = k the k-th variant down, p = uMax (= number of
-// uploaded images) is the white base. Stored in a float texture, read with texelFetch (no filtering needed).
+// Value d in [0, uMax] is the accumulated erosion DEPTH in depth units (a default drop adds up to 1). A layer is passed when d
+// exceeds its thickness; uMax is the total thickness of the uploaded layers, below which the stack ends in the white base.
+// The display turns d into a stack position p (see stackPos) using the four layer thicknesses; with all of them 1, p = d.
+// Stored in a float texture, read with texelFetch (no filtering needed).
 const FS_MASK = `#version 300 es
 precision highp float; precision highp sampler2D;
 #define MAXD ${MAXD}
@@ -437,7 +460,7 @@ void main(){
   // P = smoothstep of (age - r/c) / duration: nothing at the touch point at age 0, the change
   // starts at a texel when the ring front arrives (r/c) and takes the reveal duration to settle.
   // The increments telescope, so the full advance is exactly amount * feather(r).
-  // feather(r) = 1 - smoothstep(f0 * R, R, r): a wide radial ramp, f0 set by erodeSoftness.
+  // feather(r) = 1 - smoothstep(f0 * R, R, r): a wide radial ramp, f0 set by wearSoftness.
   vec2 uv = gl_FragCoord.xy / uSize;
   float adv = 0.0;
   for (int i = 0; i < MAXD; i++) {
@@ -452,7 +475,7 @@ void main(){
     float p1 = smoothstep(0.0, 1.0, clamp((b.y - tr) / b.z, 0.0, 1.0));
     adv += c.x * (1.0 - smoothstep(c.y * a.z, a.z, r)) * (p1 - p0);
   }
-  pt = min(pt + adv, uMax);                         // the stack ends at white: more drops change nothing
+  pt = min(pt + adv, max(uMax, pt));                // the stack ends at white: more drops change nothing (a thinner stack never cuts what is already there)
   ps = min(ps + min(pt - ps, uStep), pt);           // shown value chases the target (monotone, never wraps)
   o = vec4(pt, ps, 0.0, 1.0);
 }`;
@@ -476,7 +499,17 @@ void main(){
 const GLSL_COMMON = `
 uniform sampler2D uMask;
 uniform sampler2DArray uVar;
-uniform float uNImg, uGrid;
+uniform float uNImg, uGrid;        // uGrid = side of the erosion mask (fieldRes)
+uniform vec4 uTh;                  // layer thicknesses t0..t3 (depth units)
+uniform float uEdgeSharp, uLipTex; // layer-edge lip: 0..1, and its width in mask texels (1 at sharpness 1)
+// the light (one set of numbers for every shading term): direction TO the light in the image frame (u right, v up, z out of the surface)
+uniform vec3 uLdir;                // unit vector
+uniform vec2 uLaz;                 // (cos, sin) of the azimuth
+uniform float uTanE;               // tan(elevation)
+uniform vec3 uLcol;                // light colour (linear, 6500 K = white) x intensity
+uniform float uAmb, uLint;         // ambient fill, intensity
+uniform vec2 uEnvRot;              // (cos, sin) of the environment turn = azimuth minus the surface's own default azimuth
+const float GMIN = 0.0015;         // floor of the erosion gradient per mask texel: a flat plateau sitting on the lip line stays stable
 const vec3 WHITE = vec3(0.97, 0.935, 0.87);   // base below the last variant: slightly warm white (display-referred)
 
 float hash12(vec2 p){ vec3 q = fract(vec3(p.xyx) * .1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
@@ -505,13 +538,34 @@ vec3 layerCol(float i, vec2 iuv){
   return (i > uNImg - 0.5) ? WHITE : t;
 }
 
-// Procedural studio environment: soft gradient sky + a few blurred highlight bands.
-vec3 envMap(vec2 e){
+// Eroded depth d (depth units) -> position in the layer stack: layer k spans [t0 + .. + t(k-1), + tk], so each layer adds
+// clamp((d - start) / thickness, 0, 1). With every thickness 1 this is d itself.
+float stackPos(float d){
+  float p = 0.0, c = 0.0;
+  for (int k = 0; k < 4; k++) { p += clamp((d - c) / uTh[k], 0.0, 1.0); c += uTh[k]; }
+  return p;
+}
+// Weight of the layer below at fraction f of the layer being worn through. gl = length of the stack-position gradient per mask texel.
+//   wide crossfade (the worn skin, as before)  vs  a narrow lip on the line f = 0.5, uLipTex texels wide, whose width is
+//   measured in space (the p-window is lip x gradient), mixed by edgeSharpness: 0 = the old crossfade, 1 = a one-texel lip.
+// gl < 0 asks for the wide crossfade only.
+float layerMix(float f, float gl){
+  float mW = smoothstep(0.12, 0.88, f);
+  if (gl < 0.0) return mW;
+  float lw = min(uLipTex * max(gl, GMIN), 0.76);        // never wider than the old window, so f = 0 and f = 1 stay exact
+  float mL = smoothstep(-0.5, 0.5, (f - 0.5) / lw);
+  return mix(mW, mL, uEdgeSharp);
+}
+
+// Procedural studio environment: soft gradient sky + a few blurred highlight bands. The bands are the lights in the
+// reflection: they turn with the azimuth and carry the light's colour and intensity (lg); the sky is the fill.
+vec3 envMap(vec2 e0, vec3 lg){
+  vec2 e = vec2(uEnvRot.x * e0.x + uEnvRot.y * e0.y, -uEnvRot.y * e0.x + uEnvRot.x * e0.y);
   vec3 sky = mix(vec3(0.050, 0.058, 0.075), vec3(0.78, 0.81, 0.86), smoothstep(-0.9, 0.9, e.y * 0.9 + e.x * 0.25));
   float b1 = band(e.y * 0.97 + e.x * 0.25 - 0.25, 0.42);
   float b2 = band(e.x - 0.55 - 0.3 * e.y, 0.55) * 0.6;
   float b3 = band(e.y + 0.45, 0.30) * 0.5;
-  return sky + (b1 * 0.50 + b2 * 0.55 + b3 * 0.4) * vec3(1.0, 0.99, 0.97);
+  return sky + (b1 * 0.50 + b2 * 0.55 + b3 * 0.4) * vec3(1.0, 0.99, 0.97) * lg;
 }
 `;
 
@@ -519,7 +573,8 @@ const FS_DISPLAY = `#version 300 es
 precision highp float; precision highp sampler2D; precision highp sampler2DArray;
 uniform sampler2D uDerived;
 uniform float uReflect, uRefract, uIdle, uTime;
-uniform float uFPow, uSpecPow, uBrushStr, uBrushDir, uIrid, uIdleScale, uIdleRate, uEdgeK;
+uniform float uFPow, uSpecPow, uBrushStr, uBrushDir, uIrid, uIdleScale, uIdleRate;
+uniform float uEdgeW, uEdgeH, uDepthK;   // layer-edge bevel: width (uv), peak slope (from edgeHeight, see edgeSlope); depth: slope per uv of the eroded depth
 uniform vec3 uTint;
 uniform vec4 uW[4];            // idle waves: k.xy, omega, phase (seeded in JS)
 in vec2 vUv; out vec4 outC;
@@ -536,26 +591,35 @@ void main(){
   }
   // 2. refraction: the profile texture is read at a slope-shifted position
   vec2 suv = clamp(uv + g * uRefract * 0.7, 0.003, 0.997);
-  // 3. erosion value -> two adjacent stack layers, smooth crossfade
+  // 3. erosion depth -> stack position (layer thicknesses) -> two adjacent stack layers; the weight of the lower one is the
+  //    wide worn-skin crossfade and the narrow lip (layerMix), whose width is measured in space through the gradient of p
   float e = 1.0 / uGrid;
-  float p = clamp(maskAt(suv), 0.0, uNImg);
+  float d0 = maskAt(suv);
+  float dl = maskAt(suv - vec2(e, 0.0)), dr = maskAt(suv + vec2(e, 0.0));
+  float dd = maskAt(suv - vec2(0.0, e)), du = maskAt(suv + vec2(0.0, e));
+  float p = clamp(stackPos(d0), 0.0, uNImg);
+  vec2 gp = 0.5 * vec2(clamp(stackPos(dr), 0.0, uNImg) - clamp(stackPos(dl), 0.0, uNImg),
+                       clamp(stackPos(du), 0.0, uNImg) - clamp(stackPos(dd), 0.0, uNImg));   // per mask texel, toward more erosion
+  float gl = length(gp);
   float fi = floor(p), f = p - fi;
   float fb = min(fi + 1.0, uNImg);
-  float m = smoothstep(0.12, 0.88, f);
+  float m = layerMix(f, gl);
   vec2 iuv = vec2(suv.x, 1.0 - suv.y);
   vec3 alb = mix(layerCol(fi, iuv), layerCol(fb, iuv), m);
-  // wear-through edge: where the value is mid-transition the surface gets a soft bevel that
-  // slopes down toward the eroded side (gradient of the erosion value), so it reads as worn metal
-  vec2 gp = 0.5 * vec2(maskAt(suv + vec2(e, 0.0)) - maskAt(suv - vec2(e, 0.0)),
-                       maskAt(suv + vec2(0.0, e)) - maskAt(suv - vec2(0.0, e)));
-  float bump = 4.0 * f * (1.0 - f);
-  g -= gp * uEdgeK * bump;
+  // layer-edge bevel: a raised-cosine slope profile edgeWidth (uv) wide, peak slope uEdgeH, centred on the line where the
+  // layer ends (f = 0.5), falling toward the eroded side, so the lip catches the light; sd = distance to that line in uv.
+  // Bounded: the bevel alone tilts the reflection normal by at most atan(16 uEdgeH) (25 deg at edgeHeight 0.3, 45 deg at 1).
+  float sd = (f - 0.5) / max(gl, GMIN) / uGrid;
+  float bw = min(abs(sd) / (0.5 * uEdgeW), 1.0);
+  g -= gp / max(gl, GMIN) * (uEdgeH * (0.5 + 0.5 * cos(3.14159265 * bw)));
+  // visible depth: the eroded depth, scaled, is part of the surface height the light sees (cliffs between depths catch it)
+  g -= 0.5 * vec2(dr - dl, du - dd) * uGrid * uDepthK;
   alb *= alb;                                     // to linear (approx.)
   alb *= vec3(0.93, 0.96, 1.0) * 0.9 * mix(vec3(1.0), uTint, 0.5);   // seen through a thin film of the liquid
   // 4. lighting of the image from the heightfield normals
   vec3 nL = normalize(vec3(-g * 6.0, 1.0));
-  vec3 L = normalize(vec3(-0.5, 0.6, 0.65));
-  float dif = 0.55 + 0.75 * max(dot(nL, L), 0.0);
+  vec3 L = uLdir;
+  vec3 dif = vec3(uAmb) + 0.75 * uLcol * max(dot(nL, L), 0.0);
   // 5. metal: Fresnel reflection of the environment, F0 = uReflect, exponent from the liquid
   vec3 nE = normalize(vec3(-g * 16.0, 1.0));
   vec3 V = normalize(vec3(0.5 - uv, 1.7));
@@ -565,7 +629,7 @@ void main(){
   // faint thin-film iridescence carried by the Fresnel term (uIrid = 0 for most liquids)
   vec3 film = 0.5 + 0.5 * cos(6.28318531 * (vec3(0.0, 0.33, 0.67) + (1.0 - cv) * 3.0 + dv.z * 2.0));
   vec3 Fc = vec3(F) * (1.0 + uIrid * (film - 0.5) * 2.0);
-  vec3 en = envMap(R.xy / max(R.z, 0.15) * 1.4) * uTint;
+  vec3 en = envMap(R.xy / max(R.z, 0.15) * 1.4, uLcol) * uTint;
   // brushed streaks: direction and strength from the liquid
   float ca = cos(uBrushDir), sa = sin(uBrushDir);
   vec2 bu = vec2(ca * uv.x + sa * uv.y, -sa * uv.x + ca * uv.y);
@@ -573,7 +637,7 @@ void main(){
   en *= 1.0 + brush * uBrushStr;
   vec3 H = normalize(L + V);
   float sp = pow(max(dot(nE, H), 0.0), uSpecPow) * max(1.0 + brush * uBrushStr * 4.0, 0.0);
-  vec3 col = alb * dif * (1.0 - Fc) + en * Fc + sp * (0.25 + 0.6 * uReflect) * mix(vec3(1.0), uTint, 0.5);
+  vec3 col = alb * dif * (1.0 - Fc) + en * Fc + sp * (0.25 + 0.6 * uReflect) * uLcol * mix(vec3(1.0), uTint, 0.5);
   col = sqrt(max(col, 0.0));
   col += (hash12(gl_FragCoord.xy) - 0.5) / 255.0;                   // dither
   outC = vec4(col, 1.0);
@@ -595,7 +659,7 @@ void main(){ vP = aP; gl_Position = vec4(aPos * 2.0 - 1.0, 0.0, 1.0); }`;
 //   G = birth time (s, 1 s per level), B = wide halo (grime / stress around the fissure),
 //   A = spall footprint (written by FS_FRAG, never by a crack quad).  a = core half-width, b = birth time.
 // uMode 1 -> erosion increment of this step (RGBA8, cleared every step, MAX-blended):
-//   R = amount * feather(across).  a = amount (stack positions), b = feather start f0 (fraction of the half-width).
+//   R = amount * feather(across).  a = amount (depth units), b = feather start f0 (fraction of the half-width).
 const FS_CRACK = `#version 300 es
 precision highp float;
 uniform float uMode;
@@ -632,7 +696,7 @@ void main(){
   }
 }`;
 
-// Solid erosion mask: same two values as FS_MASK (.x target, .y shown), but the increment comes from the
+// Solid erosion mask: same two values as FS_MASK (.x target, .y shown, depth units), but the increment comes from the
 // crack-band texture drawn this step instead of from radial drop discs. Bottoms out at uMax (white), no wrap.
 const FS_MASK_SOLID = `#version 300 es
 precision highp float; precision highp sampler2D;
@@ -642,18 +706,18 @@ out vec4 o;
 void main(){
   ivec2 ip = ivec2(gl_FragCoord.xy);
   vec4 m = texelFetch(uIn, ip, 0);
-  float pt = min(m.x + texelFetch(uInc, ip, 0).r, uMax);
+  float pt = min(m.x + texelFetch(uInc, ip, 0).r, max(uMax, m.x));
   float ps = min(m.y + min(pt - m.y, uStep), pt);
   o = vec4(pt, ps, 0.0, 1.0);
 }`;
 
-// Solid display. Height (uv) = plate lift (fragment map R) - fissure depth (crack map R) - footprint depth (crack map A).
-// The light direction is derived from the brushing direction (it comes from the side of the streaks, slightly along them).
+// Solid display. Height (uv) = plate lift (fragment map R) - fissure depth (crack map R) - footprint depth (crack map A)
+// - eroded depth (mask, depth scale). The light is the Light block's (its default direction comes from the brushing direction).
 const FS_DISPLAY_SOLID = `#version 300 es
 precision highp float; precision highp sampler2D; precision highp sampler2DArray;
 uniform sampler2D uCrack, uFrag;
 uniform float uReflect, uRefract, uIdle, uTime, uCrackRes;
-uniform float uFPow, uSpecPow, uBrushStr, uBrushDir, uBevel, uPitAmt;
+uniform float uFPow, uSpecPow, uBrushStr, uBrushDir, uBevel, uPitAmt, uDepthH;   // uDepthH = visible depth (uv) per depth unit
 uniform vec3 uTint, uColA, uColB, uColC, uColD, uColP;
 uniform vec4 uCov;             // oxide cover lo/hi, patch lo/hi
 uniform vec4 uSc;              // noise scale A, B, C, patch amount
@@ -668,23 +732,28 @@ const vec2 AOD[6] = vec2[6](vec2(1.0, 0.0), vec2(0.5, 0.866), vec2(-0.5, 0.866),
 float fbm3(vec2 p){ float a = 0.5, s = 0.0; for (int i = 0; i < 3; i++) { s += a * vnoise(p); p = p * 2.03 + vec2(17.1, 9.2); a *= 0.5; } return s; }
 float fbm(vec2 p){ float a = 0.5, s = 0.0; for (int i = 0; i < 4; i++) { s += a * vnoise(p); p = p * 2.03 + vec2(17.1, 9.2); a *= 0.5; } return s / 0.9375; }
 
+// eroded depth, nearest texel (one fetch: it is read a dozen times per pixel for occlusion and shadow)
+float depthAt(vec2 q){
+  return uDepthH > 0.0 ? texelFetch(uMask, clamp(ivec2(q * uGrid), ivec2(0), ivec2(int(uGrid) - 1)), 0).y * uDepthH : 0.0;
+}
 float hgt(vec2 q){
   vec4 c = texture(uCrack, q);
-  return texture(uFrag, q).r * HRANGE - c.r * DEPTH_MAX - c.a * SOCK_D;
+  return texture(uFrag, q).r * HRANGE - c.r * DEPTH_MAX - c.a * SOCK_D - depthAt(q);
 }
-// stack colour at erosion value pp; bias > 0 blurs through the mip chain (the fissure floor is out of focus)
-vec3 stackCol(float pp, vec2 iuv, float bias){
+// stack colour at stack position pp; bias > 0 blurs through the mip chain (the fissure floor is out of focus);
+// gl = gradient of pp per mask texel for the narrow lip (layerMix), or < 0 for the wide crossfade only
+vec3 stackCol(float pp, vec2 iuv, float bias, float gl){
   pp = clamp(pp, 0.0, uNImg);
   float fi = floor(pp), f = pp - fi, fb = min(fi + 1.0, uNImg);
   vec3 a = texture(uVar, vec3(iuv, min(fi, uNImg - 1.0)), bias).rgb;
   vec3 b = texture(uVar, vec3(iuv, min(fb, uNImg - 1.0)), bias).rgb;
   a = (fi > uNImg - 0.5) ? WHITE : a;
   b = (fb > uNImg - 0.5) ? WHITE : b;
-  return mix(a, b, smoothstep(0.12, 0.88, f));
+  return mix(a, b, layerMix(f, gl));
 }
 // coat over the stack at erosion value pp (display-referred)
-vec3 skin(float pp, vec2 iuv, vec3 base, float brush){
-  vec3 img = stackCol(pp, iuv, 0.0);
+vec3 skin(float pp, vec2 iuv, vec3 base, float brush, float gl){
+  vec3 img = stackCol(pp, iuv, 0.0, gl);
   float lumG = dot(img, vec3(0.299, 0.587, 0.114));
   float expo = smoothstep(0.0, 0.8, pp);
   vec3 b2 = base * mix(1.0, clamp(lumG / 0.55, 0.30, 1.5), 0.92);        // the profile image stains the coat
@@ -694,12 +763,10 @@ vec3 skin(float pp, vec2 iuv, vec3 base, float brush){
 void main(){
   vec2 uv = vUv;
   float ct = 1.0 / uCrackRes;
-  // light direction follows the brushing: from the side of the streaks, a little along them
   float ca = cos(uBrushDir), sa = sin(uBrushDir);
-  vec2 Lxy = 0.78 * normalize(0.55 * vec2(-sa, ca) - 0.35 * vec2(ca, sa));
-  vec3 L = normalize(vec3(Lxy, 0.65));
-  vec2 Ld = normalize(Lxy);
-  float tanE = 0.65 / 0.78;
+  vec3 L = uLdir;                 // the Light block (a solid's default direction is the old brushing-derived one)
+  vec2 Ld = uLaz;
+  float tanE = uTanE;
   // 1. crack map: depth R, birth G, halo B, footprint A; fragment map: plate height, tilt, edge distance
   vec4 c0 = texture(uCrack, uv);
   vec4 cL = texture(uCrack, uv - vec2(ct, 0.0)), cR = texture(uCrack, uv + vec2(ct, 0.0));
@@ -719,9 +786,14 @@ void main(){
   vec2 tilt = (pt.gb - 0.5) * 2.0 * TMAX;
   float fc = smoothstep(0.03, 0.14, R);                                    // fissure floor
   float floorW = max(fc, Sk) * (1.0 - pc);                                 // fissure floor + the gap under a lifted plate
-  // 2. erosion value read at a bevel-shifted position: p0 = stack position of the surface, p = with the spall footprint
+  // 2. erosion depth read at a bevel-shifted position: p0 = stack position of the surface, p = with the spall footprint;
+  //    gl0 / gl1 = their gradients per mask texel (the narrow layer-edge lip is measured in space)
   vec2 suv = clamp(uv + gc * ct * uRefract * 10.0, 0.003, 0.997);
-  float p0 = clamp(maskAt(suv), 0.0, uNImg);
+  float em = 1.0 / uGrid;
+  float p0 = clamp(stackPos(maskAt(suv)), 0.0, uNImg);
+  vec2 gpm = 0.5 * vec2(clamp(stackPos(maskAt(suv + vec2(em, 0.0))), 0.0, uNImg) - clamp(stackPos(maskAt(suv - vec2(em, 0.0))), 0.0, uNImg),
+                        clamp(stackPos(maskAt(suv + vec2(0.0, em))), 0.0, uNImg) - clamp(stackPos(maskAt(suv - vec2(0.0, em))), 0.0, uNImg));
+  float gl0 = length(gpm), gl1 = length(gpm + 0.5 * vec2(cR.a - cL.a, cU.a - cD.a) * (uCrackRes / uGrid));
   float p = clamp(p0 + texture(uCrack, suv).a, 0.0, uNImg);
   vec2 iuv = vec2(suv.x, 1.0 - suv.y);
   float expo = smoothstep(0.0, 0.8, p);
@@ -745,8 +817,8 @@ void main(){
   ox = mix(ox, uColP, pit);
   ox *= (1.0 + (m1 - 0.5) * 0.30) * (1.0 + flick) * (1.0 + brush * uBrushStr * 0.12);
   vec3 base = mix(metal, ox, cov);
-  vec3 aTop = skin(p0, iuv, base, brush);
-  vec3 a = skin(p, iuv, base, brush);
+  vec3 aTop = skin(p0, iuv, base, brush, gl0);
+  vec3 a = skin(p, iuv, base, brush, gl1);
   float born = c0.g * 255.0;
   float fresh = (c0.g > 0.0 ? exp(-max(uTime - born, 0.0) / 6.0) : 0.0) * smoothstep(0.0, 0.45, R + Hh * 0.5);
   a = mix(a, uColA * 1.25, fresh * 0.45);                            // a new fissure shows bright metal for a few seconds
@@ -755,20 +827,21 @@ void main(){
   vec3 albT = aTop * aTop;
   alb = mix(alb, albT, rimW * 0.9);                                   // a lifted plate is edged by the top skin
   // fissure floor / gap: the NEXT layer of the stack, out of focus and dark (darker the narrower the fissure)
-  vec3 imgF = stackCol(clamp(p0 + 1.0, 0.0, uNImg), iuv, 2.0) * vec3(1.0, 0.97, 0.93);
+  vec3 imgF = stackCol(clamp(p0 + 1.0, 0.0, uNImg), iuv, 2.0, -1.0) * vec3(1.0, 0.97, 0.93);
   float dep = clamp(max(smoothstep(0.1, 1.0, R), Sk * 0.6), 0.0, 1.0);
   alb = mix(alb, imgF * imgF * mix(0.30, 0.62, dep), floorW);
   // 4. height field: occlusion (contact shadow along fissures, footprints and plates) and the shadow cast along the light
-  float h0 = f0.r * HRANGE - R * DEPTH_MAX - Sk * SOCK_D;
+  float h0 = f0.r * HRANGE - R * DEPTH_MAX - Sk * SOCK_D - depthAt(uv);
   float ao = 0.0;
   for (int i = 0; i < 6; i++) ao += max(hgt(uv + AOD[i] * 3.5 * ct) - h0, 0.0);
   ao = clamp(ao / 6.0 / 0.012, 0.0, 1.0);
   float sh = 0.0;
+  float reach = clamp(0.8333 / tanE, 1.0, 3.0);      // a low light throws longer shadows: the five taps stretch (x1 from the default elevation up)
   for (int i = 1; i <= 5; i++) {
-    float d = ct * 2.0 * float(i);
+    float d = ct * 2.0 * float(i) * reach;
     sh = max(sh, clamp((hgt(uv + Ld * d) - h0 - d * tanE) / 0.004, 0.0, 1.0));
   }
-  float shade = (1.0 - 0.6 * ao) * (1.0 - 0.6 * sh);
+  float shade = (1.0 - 0.6 * ao) * (1.0 - 0.6 * sh * min(uLint, 1.0));   // a light that is off casts no shadow
   // 5. lighting: bevels, plate tilt (flat per plate), fine relief of the coat
   vec2 mp = wp * 70.0;
   float n0 = fbm3(mp);
@@ -776,7 +849,7 @@ void main(){
   vec2 bev = gc * uBevel + gEu * rimW * 1.3;
   vec2 gs = bev + gm * 1.1 * cov * (1.0 - floorW) * (1.0 - 0.5 * pc) + tilt * 8.0 * pc;
   vec3 nL = normalize(vec3(-gs, 1.0));
-  float dif = 0.5 + 0.75 * max(dot(nL, L), 0.0);
+  vec3 dif = vec3(uAmb) + 0.75 * uLcol * max(dot(nL, L), 0.0);
   vec3 nE = normalize(vec3(-gs * 1.6, 1.0));
   vec3 V = normalize(vec3(0.5 - uv, 1.7));
   vec3 Rv = reflect(-V, nE);
@@ -784,15 +857,15 @@ void main(){
   float F0 = uReflect * (1.0 + 0.9 * bare) * (1.0 - 0.6 * floorW);   // low Fresnel base, a little higher where the metal shows
   float cv = max(dot(nE, V), 0.0);
   float F = F0 + (1.0 - F0) * pow(1.0 - cv, uFPow);
-  vec3 en = envMap(Rv.xy / max(Rv.z, 0.15) * 1.4) * uTint * (1.0 + brush * uBrushStr * 0.8);
+  vec3 en = envMap(Rv.xy / max(Rv.z, 0.15) * 1.4, uLcol) * uTint * (1.0 + brush * uBrushStr * 0.8);
   vec3 H = normalize(L + V);
   float sp = pow(max(dot(nE, H), 0.0), uSpecPow) * max(1.0 + brush * uBrushStr * 4.0, 0.0) * (0.25 + 0.75 * bare) * (0.55 + 0.45 * m2) * (1.0 - 0.8 * floorW);
-  vec3 col = alb * dif * (1.0 - F) + en * F * (1.0 - 0.5 * floorW) + sp * 0.45 * mix(vec3(1.0), uTint, 0.7);
+  vec3 col = alb * dif * (1.0 - F) + en * F * (1.0 - 0.5 * floorW) + sp * 0.45 * uLcol * mix(vec3(1.0), uTint, 0.7);
   col *= shade;
   // lit bevel on the top-skin edges (fissure lips, footprints, plate rims): the edge facing the light catches it
   float bm = smoothstep(0.08, 0.7, length(bev));
   float lit = max(dot(normalize(-bev + vec2(1e-5)), Ld), 0.0);
-  col += (albT * 1.5 + 0.04) * bm * lit * lit * 0.7;
+  col += (albT * 1.5 + 0.04) * uLcol * bm * lit * lit * 0.7;
   col = sqrt(max(col, 0.0));
   col += (hash12(gl_FragCoord.xy) - 0.5) / 255.0;
   outC = vec4(col, 1.0);
@@ -813,6 +886,7 @@ function makeProg(fs, names, vs) {
   return { p, u };
 }
 
+const LIGHT_U = ['uTh', 'uEdgeSharp', 'uLipTex', 'uLdir', 'uLaz', 'uTanE', 'uLcol', 'uAmb', 'uLint', 'uEnvRot'];   // shared by both display shaders
 let progSim, progTens, progMask, progDerive, progDisplay, progCrack, progFrag, progMaskS, progDisplayS;
 try {
   progSim = makeProg(FS_SIM, ['uState', 'uC2', 'uDamp', 'uEdge', 'uSpread', 'uRs', 'uSize', 'uDa', 'uDb']);
@@ -820,12 +894,12 @@ try {
   progMask = makeProg(FS_MASK, ['uIn', 'uMa', 'uMb', 'uMc', 'uMax', 'uStep', 'uSize']);
   progDerive = makeProg(FS_DERIVE, ['uState', 'uSize']);
   progDisplay = makeProg(FS_DISPLAY, ['uDerived', 'uMask', 'uVar', 'uReflect', 'uRefract', 'uIdle', 'uTime', 'uNImg', 'uGrid', 'uW',
-    'uFPow', 'uSpecPow', 'uBrushStr', 'uBrushDir', 'uIrid', 'uIdleScale', 'uIdleRate', 'uEdgeK', 'uTint']);
+    'uFPow', 'uSpecPow', 'uBrushStr', 'uBrushDir', 'uIrid', 'uIdleScale', 'uIdleRate', 'uEdgeW', 'uEdgeH', 'uDepthK', 'uTint'].concat(LIGHT_U));
   progCrack = makeProg(FS_CRACK, ['uMode'], VS_CRACK);
   progFrag = makeProg(FS_FRAG, ['uMode'], VS_CRACK);
   progMaskS = makeProg(FS_MASK_SOLID, ['uIn', 'uInc', 'uMax', 'uStep']);
   progDisplayS = makeProg(FS_DISPLAY_SOLID, ['uCrack', 'uFrag', 'uMask', 'uVar', 'uReflect', 'uRefract', 'uIdle', 'uTime', 'uCrackRes', 'uNImg', 'uGrid',
-    'uFPow', 'uSpecPow', 'uBrushStr', 'uBrushDir', 'uBevel', 'uPitAmt', 'uTint', 'uColA', 'uColB', 'uColC', 'uColD', 'uColP', 'uCov', 'uSc']);
+    'uFPow', 'uSpecPow', 'uBrushStr', 'uBrushDir', 'uBevel', 'uPitAmt', 'uDepthH', 'uTint', 'uColA', 'uColB', 'uColC', 'uColD', 'uColP', 'uCov', 'uSc'].concat(LIGHT_U));
 } catch (err) { fail(String(err.message || err)); return; }
 
 const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
@@ -844,24 +918,34 @@ function makeTarget(size, internal, type, filter) {
   const ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
   return { tex, fbo, ok, size };
 }
-function makePair(internal, type, filter) {
-  const a = makeTarget(GRID, internal, type, filter), b = makeTarget(GRID, internal, type, filter);
+function makePair(size, internal, type, filter) {
+  const a = makeTarget(size, internal, type, filter), b = makeTarget(size, internal, type, filter);
   return { t: [a, b], i: 0, ok: a.ok && b.ok, get cur() { return this.t[this.i]; }, get nxt() { return this.t[1 - this.i]; }, flip() { this.i = 1 - this.i; } };
 }
 
-let state = extF ? makePair(gl.RGBA32F, gl.FLOAT, gl.NEAREST) : null;
+let state = extF ? makePair(GRID, gl.RGBA32F, gl.FLOAT, gl.NEAREST) : null;
 const f32 = !!(state && state.ok);
-if (!f32) state = makePair(gl.RGBA16F, gl.HALF_FLOAT, gl.NEAREST);
+if (!f32) state = makePair(GRID, gl.RGBA16F, gl.HALF_FLOAT, gl.NEAREST);
 // erosion mask: continuous values accumulate small increments, so keep it 32-bit when available
-// (read with texelFetch + manual bilinear in the display shader, so no float-linear extension is needed)
-let mask = f32 ? makePair(gl.RGBA32F, gl.FLOAT, gl.NEAREST) : null;
-if (!mask || !mask.ok) mask = makePair(gl.RGBA16F, gl.HALF_FLOAT, gl.NEAREST);
+// (read with texelFetch + manual bilinear in the display shader, so no float-linear extension is needed).
+// It has its own size, `fieldRes` (FIELD_RES = 512; the wave field above stays at GRID = 256 and shares no texture with it):
+// 512 only where textures of 4096 exist and the 32-bit target is complete at 512, else the old 256.
+let fieldRes = GRID, mask = null;
+if (f32 && FIELD_RES > GRID && gl.getParameter(gl.MAX_TEXTURE_SIZE) >= 4096) {
+  mask = makePair(FIELD_RES, gl.RGBA32F, gl.FLOAT, gl.NEAREST);
+  if (mask.ok) fieldRes = FIELD_RES;
+  else { mask.t.forEach((q) => { gl.deleteFramebuffer(q.fbo); gl.deleteTexture(q.tex); }); mask = null; }
+}
+if (!mask) {
+  mask = f32 ? makePair(GRID, gl.RGBA32F, gl.FLOAT, gl.NEAREST) : null;
+  if (!mask || !mask.ok) mask = makePair(GRID, gl.RGBA16F, gl.HALF_FLOAT, gl.NEAREST);
+}
 const derived = makeTarget(GRID, gl.RGBA16F, gl.HALF_FLOAT, gl.LINEAR);
 if (!state.ok || !mask.ok || !derived.ok) { fail('Float framebuffers are incomplete on this device.'); return; }
 // Solid family: crack map (CRACK_RES^2 RGBA8, bilinear, MAX-blended, never healed) and this step's erosion increment
-// (GRID^2 RGBA8, cleared every step). Plain 8-bit targets: no float blending needed, works on iOS Safari.
+// (fieldRes^2 RGBA8, cleared every step: same grid as the mask). Plain 8-bit targets: no float blending needed, works on iOS Safari.
 const crackMap = makeTarget(CRACK_RES, gl.RGBA8, gl.UNSIGNED_BYTE, gl.LINEAR);
-const incMap = makeTarget(GRID, gl.RGBA8, gl.UNSIGNED_BYTE, gl.NEAREST);
+const incMap = makeTarget(fieldRes, gl.RGBA8, gl.UNSIGNED_BYTE, gl.NEAREST);
 const fragMap = makeTarget(CRACK_RES, gl.RGBA8, gl.UNSIGNED_BYTE, gl.LINEAR);   // spall plates: height, tilt, edge distance
 if (!crackMap.ok || !incMap.ok || !fragMap.ok) { fail('Crack framebuffers are incomplete on this device.'); return; }
 const vaoC = gl.createVertexArray(), vboC = gl.createBuffer();
@@ -911,7 +995,12 @@ const idleW = (() => {
    Simulation (fixed 1/60 s substeps) and rendering
    ====================================================================== */
 // The artist's DROP / WAVE / EROSION values. No liquid ever writes these.
-const ARTIST = { size: 0.5, attack: 0.25, wave: 0.16, rings: 2, speed: 0.30, damp: 0.008, spread: 0.6, lag: 0.6, soft: 0.5 };
+//   wear         wear softness: the wide radial feather of each drop's erosion (the worn skin); 0.5 = the old Erode softness
+//   edgeSharp    layer-edge lip: 0 = the old wide crossfade, 1 = the lip is one mask texel wide
+//   edgeW / edgeH  bevel at the layer edge (liquid): width in uv, height 0..1 (-> peak slope, edgeSlope)
+//   th0..th3     layer thicknesses in depth units; dscale  visible depth (depth units -> height) scale
+const ARTIST = { size: 0.5, attack: 0.25, wave: 0.16, rings: 2, speed: 0.30, damp: 0.008, spread: 0.6, lag: 0.6, wear: 0.5,
+                 edgeSharp: 0.8, edgeW: 0.04, edgeH: 0.3, th0: 1, th1: 1, th2: 1, th3: 1, dscale: 0.3 };
 
 // LIQUIDS: material and medium only.
 //   tension      surface tension: h += tension * laplacian(h) once per substep (rounds off fine ripples, max 0.25)
@@ -935,7 +1024,13 @@ const LIQUIDS = {
              idleAmp: 0.9, idleScale: 0.8, idleRate: 0.45, refract: 0.7, idle: 0.0035, time: 1 },
   oil:     { name: 'Oil-slick steel', tension: 0.015, visc: 0.0110, fresnelBase: 0.30, fresnelPow: 3.0, specPow: 70,
              brushStr: 0.240, brushDir: 1.15, tint: [0.40, 0.43, 0.48], irid: 0.32,
-             idleAmp: 1.5, idleScale: 0.5, idleRate: 0.35, refract: 0.6, idle: 0.0050, time: 1 }
+             idleAmp: 1.5, idleScale: 0.5, idleRate: 0.35, refract: 0.6, idle: 0.0050, time: 1 },
+  gold:    { name: 'Molten gold',     tension: 0.080, visc: 0.0030, fresnelBase: 0.50, fresnelPow: 3.0, specPow: 300,
+             brushStr: 0.050, brushDir: 0.20, tint: [1.00, 0.84, 0.55], irid: 0.00,
+             idleAmp: 0.9, idleScale: 1.0, idleRate: 0.70, refract: 0.8, idle: 0.0040, time: 1 },
+  lead:    { name: 'Lead',            tension: 0.030, visc: 0.0120, fresnelBase: 0.22, fresnelPow: 5.0, specPow: 60,
+             brushStr: 0.180, brushDir: 0.70, tint: [0.62, 0.64, 0.68], irid: 0.00,
+             idleAmp: 0.8, idleScale: 0.7, idleRate: 0.25, refract: 0.6, idle: 0.0035, time: 1 }
 };
 // SOLIDS: oxidised metal under a coat. No waves; cracks instead. Colours are display-referred (gamma) RGB.
 //   fresnelBase / fresnelPow / specPow / brushStr / brushDir / tint   as for the liquids (but low reflectance, broad lobe)
@@ -958,7 +1053,36 @@ const SOLIDS = {
             cover: [0.16, 0.42], patchTh: [0.44, 0.62], patchAmt: 0.85, pitAmt: 0.40, scaleA: 3.5, scaleB: 10.0, scaleC: 6.0,
             refract: 0.5, idle: 0.0040, time: 1 }
 };
-const SURFACE_ALIAS = { 'rusted-iron': 'rust', iron: 'rust', 'tarnished-bronze': 'bronze' };
+const SURFACE_ALIAS = { 'rusted-iron': 'rust', iron: 'rust', 'tarnished-bronze': 'bronze', 'molten-gold': 'gold' };
+
+/* ======================================================================
+   LIGHT: one set of numbers read by every shading term (diffuse, specular, the Fresnel environment bands, the bevel highlight,
+   occlusion / shadow direction). Azimuth is the direction the light comes from in the image frame (0 right, 90 top, 180 left,
+   270 bottom), elevation is above the surface. The defaults are the directions the shaders used to hard-code, so the look is
+   unchanged: liquids (-0.5, 0.6, 0.65); solids derived from the brushing direction. Intensity 1, 6500 K (= white).
+   ====================================================================== */
+const DEG = 180 / Math.PI;
+function surfaceLight(d) {                       // implicit light of a surface: azimuth / elevation (deg) and ambient fill
+  if (d.family === 'solid') {
+    const ca = Math.cos(d.brushDir), sa = Math.sin(d.brushDir);
+    const x = 0.55 * -sa - 0.35 * ca, y = 0.55 * ca - 0.35 * sa;                          // direction of 0.78 * normalize(...)
+    return { az: Math.atan2(y, x) * DEG, el: Math.atan2(0.65, 0.78) * DEG, amb: 0.5 };
+  }
+  return { az: Math.atan2(0.6, -0.5) * DEG, el: Math.atan2(0.65, Math.hypot(-0.5, 0.6)) * DEG, amb: 0.55 };
+}
+const srgbToLin = (c) => (c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+// colour temperature -> linear RGB: Tanner Helland's approximation, each channel divided by its 6500 K value so 6500 K is exactly white
+function kelvinRGB(K) {
+  const rgb = (k) => {
+    const t = k / 100;
+    const r = t <= 66 ? 255 : 329.698727446 * Math.pow(t - 60, -0.1332047592);
+    const g = t <= 66 ? 99.4708025861 * Math.log(t) - 161.1195681661 : 288.1221695283 * Math.pow(t - 60, -0.0755148492);
+    const b = t >= 66 ? 255 : t <= 19 ? 0 : 138.5177312231 * Math.log(t - 10) - 305.0447927307;
+    return [r, g, b].map((v) => srgbToLin(Math.min(255, Math.max(0, v)) / 255));
+  };
+  const w = rgb(6500), c = rgb(K);
+  return c.map((v, i) => v / w[i]);
+}
 
 let liquidKey = 'mercury', liquid = LIQUIDS.mercury;
 let family = 'liquid', solid = null;      // active surface family; `liquid` stays the last chosen liquid, `solid` the active solid
@@ -999,7 +1123,7 @@ function makeDrop(ev) {
   return { x: ev.x, y: 1 - ev.y, t0: stepCount, amp: -DROP_AMP * k, lam, sig, att: params.attack,
            Rrev: Math.min(0.7, Math.max(0.04, 1.7 * sig)), dur: Math.max(0.04, params.attack + params.lag), c: st.c,
            ero: Math.min(1, Math.max(0.05, ERODE_GAIN * k)),                 // partial erosion: bigger drop, more of a layer
-           f0: 1 - (0.06 + 0.94 * clamp01(params.soft)) };                   // feather starts at f0 * radius (0 = from the centre)
+           f0: 1 - (0.06 + 0.94 * clamp01(params.wear)) };                   // feather starts at f0 * radius (0 = from the centre)
 }
 function addDrop(d) {
   drops = drops.filter((q) => (stepCount - q.t0) * DT < SIM_LIFE);
@@ -1325,7 +1449,7 @@ function spawnCracks(ev) {
   if (!polys.length) return;
   let dmax = 0; for (const P of polys) dmax = Math.max(dmax, P.off + P.len / P.spd);
   cdrops.push({ t0: stepCount, seq, polys, v, att: params.attack, lag: params.lag,
-                ero: Math.min(1, Math.max(0.05, ERODE_GAIN * k)), f0: 1 - (0.06 + 0.94 * clamp01(params.soft)),
+                ero: Math.min(1, Math.max(0.05, ERODE_GAIN * k)), f0: 1 - (0.06 + 0.94 * clamp01(params.wear)),
                 tb: Math.min(255, stepCount * DT) / 255,
                 tEnd: dmax / Math.max(v, 1e-4) + 0.5 * params.attack + params.lag + 0.1 });
 }
@@ -1484,20 +1608,22 @@ function tensPass(sp) {
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   state.flip();
 }
+// total thickness (depth units) of the layers that exist: where the erosion depth ends in the white base
+const maxDepth = () => [params.th0, params.th1, params.th2, params.th3].slice(0, variantN).reduce((a, b) => a + b, 0);
 function maskPass() {
-  const P = pass(progMask, mask.nxt, GRID);
+  const P = pass(progMask, mask.nxt, fieldRes);
   bindTex(0, gl.TEXTURE_2D, mask.cur.tex, P.u.uIn);
   gl.uniform4fv(P.u.uMa, aMa); gl.uniform4fv(P.u.uMb, aMb); gl.uniform4fv(P.u.uMc, aMc);
-  gl.uniform1f(P.u.uMax, variantN); gl.uniform1f(P.u.uStep, FOLLOW * DT); gl.uniform1f(P.u.uSize, GRID);
+  gl.uniform1f(P.u.uMax, maxDepth()); gl.uniform1f(P.u.uStep, FOLLOW * DT); gl.uniform1f(P.u.uSize, fieldRes);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   mask.flip();
 }
 
 function maskSolidPass() {
-  const P = pass(progMaskS, mask.nxt, GRID);
+  const P = pass(progMaskS, mask.nxt, fieldRes);
   bindTex(0, gl.TEXTURE_2D, mask.cur.tex, P.u.uIn);
   bindTex(1, gl.TEXTURE_2D, incMap.tex, P.u.uInc);
-  gl.uniform1f(P.u.uMax, variantN); gl.uniform1f(P.u.uStep, FOLLOW * DT);
+  gl.uniform1f(P.u.uMax, maxDepth()); gl.uniform1f(P.u.uStep, FOLLOW * DT);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   mask.flip();
 }
@@ -1568,6 +1694,26 @@ canvas.addEventListener('pointerup', (e) => {
   if (Math.hypot(e.clientX - d.x, e.clientY - d.y) < 12 && performance.now() - d.t < 700) tapDrop(e.clientX, e.clientY);
 });
 
+// Light state (see LIGHT above). az / el / amb follow the surface's own light until the artist moves that slider.
+const light = Object.assign({ int: 1, K: 6500 }, surfaceLight(LIQUIDS.mercury));
+const lightTouched = { az: false, el: false, amb: false };
+let lightRef = surfaceLight(LIQUIDS.mercury);       // the active surface's own light: the environment turns by (azimuth - reference azimuth)
+function setLightUniforms(P) {
+  const az = light.az / DEG, el = light.el / DEG, ce = Math.cos(el);
+  const k = kelvinRGB(light.K), I = light.int, rot = (light.az - lightRef.az) / DEG;
+  gl.uniform3f(P.u.uLdir, ce * Math.cos(az), ce * Math.sin(az), Math.sin(el));
+  gl.uniform2f(P.u.uLaz, Math.cos(az), Math.sin(az));
+  gl.uniform1f(P.u.uTanE, Math.tan(el));
+  gl.uniform3f(P.u.uLcol, k[0] * I, k[1] * I, k[2] * I);
+  gl.uniform1f(P.u.uAmb, light.amb); gl.uniform1f(P.u.uLint, I);
+  gl.uniform2f(P.u.uEnvRot, Math.cos(rot), Math.sin(rot));
+  gl.uniform4f(P.u.uTh, params.th0, params.th1, params.th2, params.th3);
+  gl.uniform1f(P.u.uEdgeSharp, params.edgeSharp); gl.uniform1f(P.u.uLipTex, Math.pow(16, 1 - params.edgeSharp));
+}
+
+// edgeHeight 0..1 -> peak bevel slope (wave-slope units; the reflection normal uses 16x the slope): tan(45 deg) / 16 at 1,
+// tan(25 deg) / 16 at the default 0.3 (exponent ln(tan 25 deg) / ln 0.3)
+const edgeSlope = (h) => (Math.pow(Math.max(h, 0), 0.634) * Math.tan(Math.PI / 4)) / 16;
 function render() {
   // size the backing store
   const r = canvas.getBoundingClientRect();
@@ -1587,12 +1733,14 @@ function render() {
   bindTex(2, gl.TEXTURE_2D_ARRAY, varTex, P.u.uVar);
   gl.uniform1f(P.u.uReflect, params.reflect); gl.uniform1f(P.u.uRefract, params.refract);
   gl.uniform1f(P.u.uIdle, params.idle * liquid.idleAmp); gl.uniform1f(P.u.uTime, stepCount * DT + (playing ? acc : 0));
-  gl.uniform1f(P.u.uNImg, variantN); gl.uniform1f(P.u.uGrid, GRID); gl.uniform4fv(P.u.uW, idleW);
+  gl.uniform1f(P.u.uNImg, variantN); gl.uniform1f(P.u.uGrid, fieldRes); gl.uniform4fv(P.u.uW, idleW);
   const L = liquid;
   gl.uniform1f(P.u.uFPow, L.fresnelPow); gl.uniform1f(P.u.uSpecPow, L.specPow);
   gl.uniform1f(P.u.uBrushStr, L.brushStr); gl.uniform1f(P.u.uBrushDir, L.brushDir);
   gl.uniform1f(P.u.uIrid, L.irid); gl.uniform1f(P.u.uIdleScale, L.idleScale); gl.uniform1f(P.u.uIdleRate, L.idleRate);
-  gl.uniform1f(P.u.uEdgeK, EDGE_K); gl.uniform3fv(P.u.uTint, L.tint);
+  gl.uniform1f(P.u.uEdgeW, params.edgeW); gl.uniform1f(P.u.uEdgeH, edgeSlope(params.edgeH));
+  gl.uniform1f(P.u.uDepthK, params.dscale * DEPTH_G); gl.uniform3fv(P.u.uTint, L.tint);
+  setLightUniforms(P);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
 }
 
@@ -1605,10 +1753,11 @@ function renderSolid(w) {
   bindTex(3, gl.TEXTURE_2D, fragMap.tex, P.u.uFrag);
   gl.uniform1f(P.u.uReflect, params.reflect); gl.uniform1f(P.u.uRefract, params.refract);
   gl.uniform1f(P.u.uIdle, params.idle); gl.uniform1f(P.u.uTime, stepCount * DT + (playing ? acc : 0));
-  gl.uniform1f(P.u.uCrackRes, CRACK_RES); gl.uniform1f(P.u.uNImg, variantN); gl.uniform1f(P.u.uGrid, GRID);
+  gl.uniform1f(P.u.uCrackRes, CRACK_RES); gl.uniform1f(P.u.uNImg, variantN); gl.uniform1f(P.u.uGrid, fieldRes);
   gl.uniform1f(P.u.uFPow, S.fresnelPow); gl.uniform1f(P.u.uSpecPow, S.specPow);
   gl.uniform1f(P.u.uBrushStr, S.brushStr); gl.uniform1f(P.u.uBrushDir, S.brushDir);
-  gl.uniform1f(P.u.uBevel, S.bevel); gl.uniform1f(P.u.uPitAmt, S.pitAmt);
+  gl.uniform1f(P.u.uBevel, S.bevel); gl.uniform1f(P.u.uPitAmt, S.pitAmt); gl.uniform1f(P.u.uDepthH, params.dscale * DEPTH_UNIT);
+  setLightUniforms(P);
   gl.uniform3fv(P.u.uTint, S.tint); gl.uniform3fv(P.u.uColA, S.bare); gl.uniform3fv(P.u.uColB, S.oxD);
   gl.uniform3fv(P.u.uColC, S.oxL); gl.uniform3fv(P.u.uColD, S.patch); gl.uniform3fv(P.u.uColP, S.pit);
   gl.uniform4f(P.u.uCov, S.cover[0], S.cover[1], S.patchTh[0], S.patchTh[1]);
@@ -1646,9 +1795,12 @@ const fmt = { reflect: (v) => v.toFixed(2), refract: (v) => v.toFixed(2), damp: 
               idle: (v) => v.toFixed(4), size: (v) => v.toFixed(2), time: (v) => v.toFixed(2) + 'x',
               speed: (v) => { if (family === 'solid') return (CRACK_V * v).toFixed(2); const s = simState(); return s.c.toFixed(2) + (s.clamped ? '*' : ''); },
               wave: (v) => v.toFixed(3), rings: (v) => v.toFixed(1), attack: (v) => v.toFixed(2),
-              spread: (v) => (v >= SPREAD_OFF - 1e-9 ? 'off' : v.toFixed(2)), lag: (v) => v.toFixed(2), soft: (v) => v.toFixed(2) };
+              spread: (v) => (v >= SPREAD_OFF - 1e-9 ? 'off' : v.toFixed(2)), lag: (v) => v.toFixed(2), wear: (v) => v.toFixed(2),
+              edgeSharp: (v) => v.toFixed(2), edgeW: (v) => v.toFixed(4), edgeH: (v) => v.toFixed(2),
+              th0: (v) => v.toFixed(2), th1: (v) => v.toFixed(2), th2: (v) => v.toFixed(2), th3: (v) => v.toFixed(2), dscale: (v) => v.toFixed(2) };
 const ids = { size: 'Size', attack: 'Attack', wave: 'Wave', rings: 'Rings', speed: 'Speed', damp: 'Damp', spread: 'Spread',
-              lag: 'Lag', soft: 'Soft', reflect: 'Reflect', refract: 'Refract', idle: 'Idle', time: 'Time' };
+              lag: 'Lag', wear: 'Wear', edgeSharp: 'ESharp', edgeW: 'EW', edgeH: 'EH', th0: 'Th0', th1: 'Th1', th2: 'Th2', th3: 'Th3', dscale: 'DScale',
+              reflect: 'Reflect', refract: 'Refract', idle: 'Idle', time: 'Time' };
 
 const r3 = (v) => Math.round(v * 1000) / 1000;
 const seedVal = () => { const v = parseInt($('nSeed').value, 10); return Number.isFinite(v) ? Math.max(0, Math.min(999999, v)) : 1; };
@@ -1675,8 +1827,10 @@ function syncValues() {
     o.damping = params.damp;
   }
   Object.assign(o, { spread: params.spread >= SPREAD_OFF - 1e-9 ? 'off' : params.spread, revealLag: params.lag,
-    erodeSoftness: params.soft, variants: variantN,
-    reflect: params.reflect, refract: params.refract, idle: params.idle, timeScale: params.time });
+    wearSoftness: params.wear, edgeSharpness: params.edgeSharp, edgeWidth: params.edgeW, edgeHeight: params.edgeH,
+    thickness: [params.th0, params.th1, params.th2, params.th3], depthScale: params.dscale, variants: variantN,
+    reflect: params.reflect, refract: params.refract, idle: params.idle, timeScale: params.time,
+    light: { azimuth: r3(light.az), elevation: r3(light.el), intensity: light.int, kelvin: light.K, ambient: light.amb } });
   $('json').value = JSON.stringify(o, null, 1);
 }
 Object.keys(ids).forEach((k) => {
@@ -1684,6 +1838,21 @@ Object.keys(ids).forEach((k) => {
   const upd = () => { params[k] = parseFloat(s.value); o.textContent = fmt[k](params[k]); syncValues(); };
   s.addEventListener('input', upd); upd();
 });
+// Light block. Azimuth / elevation / ambient start from the active surface's own light (surfaceLight) and stay where the artist
+// puts them once moved; intensity and colour temperature are global.
+const LUI = { az: ['sLAz', 'oLAz', (v) => Math.round(v) + '\u00b0'], el: ['sLEl', 'oLEl', (v) => Math.round(v) + '\u00b0'],
+              int: ['sLInt', 'oLInt', (v) => v.toFixed(2)], K: ['sLK', 'oLK', (v) => Math.round(v) + ' K'], amb: ['sLAmb', 'oLAmb', (v) => v.toFixed(2)] };
+function showLight() { Object.keys(LUI).forEach((k) => { $(LUI[k][0]).value = light[k]; $(LUI[k][1]).textContent = LUI[k][2](light[k]); }); }
+Object.keys(LUI).forEach((k) => $(LUI[k][0]).addEventListener('input', (e) => {
+  light[k] = parseFloat(e.target.value);
+  if (k in lightTouched) lightTouched[k] = true;
+  $(LUI[k][1]).textContent = LUI[k][2](light[k]); syncValues();
+}));
+function followSurfaceLight(d) {
+  lightRef = surfaceLight(d);
+  ['az', 'el', 'amb'].forEach((k) => { if (!lightTouched[k]) light[k] = lightRef[k]; });
+  showLight();
+}
 // Surface row: sets the material (LIQUIDS or SOLIDS entry) and resets the four override sliders to its defaults.
 // It never touches the DROP / WAVE / EROSION sliders. Changing the family (liquid <-> solid) starts a fresh piece.
 function advText() {
@@ -1719,9 +1888,11 @@ function applySurface(key) {
   const d = isSolid ? solid : liquid;
   const set = { reflect: d.fresnelBase, refract: d.refract, idle: d.idle, time: d.time };
   Object.keys(set).forEach((k) => { const s = $('s' + ids[k]); s.value = set[k]; s.dispatchEvent(new Event('input')); });
+  followSurfaceLight(d);
   if (changed) restart();
   document.querySelectorAll('[data-surface]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.surface === key ? 'true' : 'false'));
   $('sDamp').disabled = isSolid; $('cDamp').classList.toggle('off', isSolid); $('dnote').hidden = !isSolid;
+  ['cEW', 'cEH'].forEach((id) => $(id).classList.toggle('off', isSolid)); $('enote').hidden = !isSolid;   // the layer-edge bevel is a liquid-shader term
   $('oSpeed').textContent = fmt.speed(params.speed);
   $('fnote').textContent = isSolid ? 'Solid surface: a drop opens a crack cluster instead of a wave. Cracks grow, never heal, and erode along themselves.' : '';
   $('advNum').textContent = advText();
@@ -1786,6 +1957,8 @@ window.XANADU = {
   randomEvents,
   startRandom,
   params,
+  light,
+  get fieldRes() { return fieldRes; },
   setEvents(list) { EVENTS = list.map(dropFromEvent).sort((a, b) => a.t - b.t); restart(); },
   setAuto,
   applyLiquid: applySurface,
