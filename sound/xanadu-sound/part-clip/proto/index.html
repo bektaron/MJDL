@@ -58,6 +58,13 @@ button[aria-pressed=true]{background:#2a2f38;border-color:#8a96aa;color:#fff}
 .dimtxt{color:var(--dim);font-size:12px}
 details.sub{border-bottom:0;margin:2px 0 4px}
 details.sub summary{font-size:12px;padding:8px 0;color:var(--dim);letter-spacing:.06em}
+.texrow{display:grid;grid-template-columns:1fr 76px 76px;gap:8px;align-items:center;margin:0 0 2px}
+.texrow .tl{font-size:13px;color:var(--fg)}
+.texrow .filebtn,.texrow button{min-height:40px;font-size:14px;padding:8px 4px;flex:none}
+.note.tex{margin:0 0 10px;overflow-wrap:anywhere}
+.row.imp button small{display:block;font-size:10.5px;letter-spacing:.04em;color:var(--dim)}
+.row.imp button[aria-pressed=true] small{color:#aab4c4}
+.note.ok{color:#a9c4ae}
 pre#advNum{margin:0 0 8px;padding:10px;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--fg);
   background:#101114;border:1px solid #30343a;border-radius:8px;white-space:pre-wrap;user-select:text;-webkit-user-select:text}
 @media (min-aspect-ratio:1/1){
@@ -84,7 +91,7 @@ pre#advNum{margin:0 0 8px;padding:10px;font:12px/1.5 ui-monospace,SFMono-Regular
         <button id="bRand" type="button" aria-pressed="false">Random 45 s</button>
       </div>
       <div class="ctl rnd"><label for="nSeed">Seed</label><input id="nSeed" type="number" min="0" max="999999" step="1" value="1" inputmode="numeric"><output id="rLeft">idle</output></div>
-      <label class="tog" for="tAuto"><input id="tAuto" type="checkbox"> Auto events <span class="dimtxt">(synthetic drops; off = tap only)</span></label>
+      <label class="tog" for="tAuto"><input id="tAuto" type="checkbox"> Auto events <span class="dimtxt">(synthetic events of the chosen impact type; off = tap only)</span></label>
       <div class="grp">Surface</div>
       <div class="row liq">
         <button class="sm" type="button" data-surface="mercury" aria-pressed="false">Mercury</button>
@@ -125,8 +132,19 @@ pre#advNum{margin:0 0 8px;padding:10px;font:12px/1.5 ui-monospace,SFMono-Regular
         <summary>Advanced: surface numbers</summary>
         <pre id="advNum" aria-label="Active surface parameters, read only"></pre>
       </details>
-      <div class="grp">Drop (tap the surface to drop)</div>
-      <div class="ctl"><label for="sSize">Drop size</label><input id="sSize" type="range" min="0.05" max="2" step="0.05" value="0.5"><output id="oSize"></output></div>
+      <div class="grp">Impact (tap the surface)</div>
+      <div class="row asp fit imp" id="impRow">
+        <button class="sm" type="button" data-impact="drop" aria-pressed="true">Drop</button>
+        <button class="sm" type="button" data-impact="strike" aria-pressed="false">Strike</button>
+        <button class="sm" type="button" data-impact="sweep" aria-pressed="false">Sweep<small>pass 4</small></button>
+        <button class="sm" type="button" data-impact="blow" aria-pressed="false">Blow<small>pass 5</small></button>
+        <button class="sm" type="button" data-impact="flow" aria-pressed="false">Flow<small>pass 5</small></button>
+      </div>
+      <div class="ctl"><label for="sSize">Energy</label><input id="sSize" type="range" min="0.05" max="2" step="0.05" value="0.5"><output id="oSize"></output></div>
+      <div class="ctl" id="cArea"><label for="sArea">Area</label><input id="sArea" type="range" min="0" max="1" step="0.01" value="0.1"><output id="oArea"></output></div>
+      <div class="ctl" id="cDur"><label for="sDur">Duration (s)</label><input id="sDur" type="range" min="0" max="3" step="0.05" value="0"><output id="oDur"></output></div>
+      <div class="ctl" id="cDir"><label for="sDir">Direction</label><input id="sDir" type="range" min="0" max="360" step="1" value="0"><output id="oDir"></output></div>
+      <p class="note" id="inote"></p>
       <div class="ctl"><label for="sAttack">Attack (s)</label><input id="sAttack" type="range" min="0" max="1.5" step="0.05" value="0.25"><output id="oAttack"></output></div>
       <div class="ctl"><label for="sWave">Wavelength</label><input id="sWave" type="range" min="0.03" max="0.4" step="0.005" value="0.16"><output id="oWave"></output></div>
       <div class="ctl"><label for="sRings">Ring count</label><input id="sRings" type="range" min="1" max="5" step="0.5" value="2"><output id="oRings"></output></div>
@@ -156,6 +174,23 @@ pre#advNum{margin:0 0 8px;padding:10px;font:12px/1.5 ui-monospace,SFMono-Regular
       <div class="ctl"><label for="sTh2">Layer 3</label><input id="sTh2" type="range" min="0.2" max="3" step="0.05" value="1"><output id="oTh2"></output></div>
       <div class="ctl"><label for="sTh3">Layer 4</label><input id="sTh3" type="range" min="0.2" max="3" step="0.05" value="1"><output id="oTh3"></output></div>
       <div class="ctl"><label for="sDScale">Depth scale</label><input id="sDScale" type="range" min="0" max="1" step="0.01" value="0.3"><output id="oDScale"></output></div>
+      <div class="grp">Textures (kept when the surface changes; max 2048 per side)</div>
+      <div id="texSolid">
+        <div class="texrow"><span class="tl">Albedo</span><label class="filebtn" for="fTexAlbedo">Load</label><input id="fTexAlbedo" type="file" accept="image/*,.tif,.tiff,.png,.jpg,.jpeg" data-slot="albedo"><button type="button" data-clear="albedo">Clear</button></div>
+        <p class="note tex" id="tnAlbedo"></p>
+        <div class="texrow"><span class="tl">Height</span><label class="filebtn" for="fTexHeight">Load</label><input id="fTexHeight" type="file" accept="image/*,.tif,.tiff,.png,.jpg,.jpeg" data-slot="height"><button type="button" data-clear="height">Clear</button></div>
+        <p class="note tex" id="tnHeight"></p>
+        <div class="texrow"><span class="tl">Roughness</span><label class="filebtn" for="fTexRoughness">Load</label><input id="fTexRoughness" type="file" accept="image/*,.tif,.tiff,.png,.jpg,.jpeg" data-slot="roughness"><button type="button" data-clear="roughness">Clear</button></div>
+        <p class="note tex" id="tnRoughness"></p>
+        <div class="ctl"><label for="sBump">Bump strength</label><input id="sBump" type="range" min="0" max="2" step="0.05" value="1"><output id="oBump"></output></div>
+      </div>
+      <div id="texLiquid" hidden>
+        <div class="texrow"><span class="tl">Brushing</span><label class="filebtn" for="fTexBrushing">Load</label><input id="fTexBrushing" type="file" accept="image/*,.tif,.tiff,.png,.jpg,.jpeg" data-slot="brushing"><button type="button" data-clear="brushing">Clear</button></div>
+        <p class="note tex" id="tnBrushing"></p>
+        <div class="ctl"><label for="sTile">Brush tiles</label><input id="sTile" type="range" min="0.25" max="8" step="0.25" value="2"><output id="oTile"></output></div>
+        <div class="texrow"><span class="tl">HDRI</span><label class="filebtn" for="fTexHdri">Load</label><input id="fTexHdri" type="file" accept="image/*,.tif,.tiff,.png,.jpg,.jpeg" data-slot="hdri"><button type="button" data-clear="hdri">Clear</button></div>
+        <p class="note tex" id="tnHdri"></p>
+      </div>
       <div class="grp">Light</div>
       <div class="ctl"><label for="sLAz">Azimuth</label><input id="sLAz" type="range" min="0" max="360" step="0.1" value="129.8"><output id="oLAz"></output></div>
       <div class="ctl"><label for="sLEl">Elevation</label><input id="sLEl" type="range" min="5" max="85" step="0.1" value="39.8"><output id="oLEl"></output></div>
@@ -173,8 +208,14 @@ pre#advNum{margin:0 0 8px;padding:10px;font:12px/1.5 ui-monospace,SFMono-Regular
     </details>
     <details open>
       <summary>Values</summary>
-      <p class="note">Copy these values into the project file.</p>
-      <textarea id="json" readonly rows="36" spellcheck="false" aria-label="Current parameter set as JSON"></textarea>
+      <p class="note">Copy these values into the project file, or save them as a file. Images and textures are not saved.</p>
+      <div class="row">
+        <button id="bSave" type="button">Save settings</button>
+        <label class="filebtn" for="fLoad" title="Restores every slider, the surface, light, thickness, aspect, fit, render, seed and impact from a xanadu-settings.json">Load settings</label>
+        <input id="fLoad" type="file" accept=".json,application/json">
+      </div>
+      <p class="note" id="setmsg" role="status" hidden></p>
+      <textarea id="json" readonly rows="46" spellcheck="false" aria-label="Current parameter set as JSON"></textarea>
     </details>
     <footer>Pärt clip · prototype · 31 Oct 2026 · private study · no audio</footer>
   </div>
@@ -208,7 +249,7 @@ const MAXD     = 16;        // drops kept alive at once (impulse, spread and rev
 const SIM_LIFE = 20;        // seconds a drop stays in the list (spread reference + reveal window)
 const SPREAD_OFF = 2.0;     // spread slider maximum = off
 const S_REF    = 0.5;       // reference drop size (slider default): amp = DROP_AMP * s/S_REF, radius ~ sqrt(s/S_REF)
-const dropSize = (ev) => (ev.abs != null ? Math.min(2, Math.max(0.05, ev.abs * params.size / S_REF)) : ev.size * params.size);   // effective drop size
+const TEX_MAX  = 2048;      // texture slots: longest side (larger images are scaled down)
 const DROP_AMP = 0.8;       // impulse depth at the reference size
 const EDGE_DAMP = 0.07;     // border sponge, per iteration at 2 iterations/substep
 const MIN_LAM  = 6 / GRID;  // smallest effective wavelength (6 cells) to keep the ring resolved
@@ -242,7 +283,7 @@ function mulberry32(a) {
 }
 
 /* ======================================================================
-   EVENTS: the drop list.
+   EVENTS: the impact list.
 
    RULE (position follows pitch, not chance):
      - `pitch` in 0..1  ->  radius from the centre of the surface.
@@ -250,7 +291,7 @@ function mulberry32(a) {
          r = rMin + (1 - pitch) * (rMax - rMin)     (uv units, surface is 1 x 1)
      - angle = angle0 + omega * t   (slow rotation; one turn per 45 s)
      - x = 0.5 + r cos(angle), y = 0.5 + r sin(angle)    (y down, image space)
-     - `vel` in 0..1  ->  size = 0.5 + 0.5 * vel         (size 0.5 .. 1.0)
+     - `vel` in 0..1  ->  energy = (0.5 + 0.5 * vel) * 0.5   (0.25 .. 0.5 at the default Energy slider; the slider scales it live)
 
    To use a real recording: produce events.json as an array of
    { t, pitch, vel } (seconds, 0..1, 0..1) and call
@@ -260,13 +301,50 @@ function mulberry32(a) {
    ====================================================================== */
 const RULE = { rMin: 0.04, rMax: 0.42, angle0: 0.6, omega: (2 * Math.PI) / 45 };
 
+/* ----------------------------------------------------------------------
+   IMPACT EVENT RECORD (IMPACTS.md). Every event the simulation reads is
+       { t, type, energy, area, duration, dir, x, y }
+   t seconds; type 'drop' | 'strike' | 'sweep' | 'blow' | 'flow'; energy 0.05..2 (the Energy slider's units); area 0..1; duration s;
+   dir radians; x, y position (0..1 across the canvas, y down). The IMPACT block shows dir in degrees (so does the JSON readout).
+     drop    energy = size, area 0.1, duration 0, dir 0. A point; area is stored, not read.
+     strike  area 0.5, duration 0.1. Liquid: a broad, lower swell spread over `area` plus a short splash ring. Solid: a fissure with
+             spalling (the large-impact path) and a footprint that grows with `area`.
+     sweep / blow / flow   selectable, stored and ignored until passes 4 / 5.
+   Where records come from:
+     taps, Next event      energy is final (a tap is the Energy slider's value); type, area, duration, dir come from the IMPACT block.
+     auto events           the list holds position and the energy the event has at the default slider (0.5); the Energy slider scales it
+                           live (x slider / 0.5); type, area, duration, dir come from the IMPACT block when the event is spawned.
+     Random 45 s           each event carries its own type (drop / strike 80 / 20), energy and area; the block does not change them
+                           (the Energy slider is a multiplier relative to its default, as before).
+   ---------------------------------------------------------------------- */
+const IMPACT_TYPES  = ['drop', 'strike', 'sweep', 'blow', 'flow'];
+const IMPACT_ACTIVE = { drop: true, strike: true };            // the others: stored and ignored (passes 4 / 5)
+const IMPACT_PRESET = { drop: { area: 0.1, duration: 0, dir: 0 }, strike: { area: 0.5, duration: 0.1, dir: 0 },
+                        sweep: { area: 0.2, duration: 1.5, dir: 0 }, blow: { area: 0.6, duration: 2, dir: 0 }, flow: { area: 0.8, duration: 3, dir: 0 } };
+const impact = { type: 'drop', area: 0.1, duration: 0, dir: 0 };   // the IMPACT block (dir in degrees; energy is the Energy slider, params.size)
+
+// Queued / scheduled event -> the full record the simulation reads. scaled: the energy is the one at the default slider and the Energy
+// slider scales it (clamped to the slider's range); otherwise it already is final.
+function resolveEvent(ev, scaled) {
+  const own = typeof ev.type === 'string';
+  const type = own ? (IMPACT_TYPES.indexOf(ev.type) >= 0 ? ev.type : 'drop') : impact.type, pre = IMPACT_PRESET[type];
+  return { t: ev.t, type,
+           energy: scaled ? Math.min(2, Math.max(0.05, ev.energy * params.size / S_REF)) : ev.energy,
+           area: own ? (ev.area != null ? ev.area : pre.area) : impact.area,
+           duration: own ? (ev.duration != null ? ev.duration : pre.duration) : impact.duration,
+           dir: own ? (ev.dir != null ? ev.dir : pre.dir) : impact.dir * Math.PI / 180,
+           x: ev.x, y: ev.y };
+}
+
 function dropFromEvent(e) {
   const pitch = clamp01(e.pitch);
   const vel = e.vel == null ? 0.7 : clamp01(e.vel);
   const r = RULE.rMin + (1 - pitch) * (RULE.rMax - RULE.rMin);
   const a = RULE.angle0 + RULE.omega * e.t;
-  return { t: e.t, x: 0.5 + r * Math.cos(a), y: 0.5 + r * Math.sin(a),
-           size: 0.5 + 0.5 * vel, pitch, vel };
+  const rec = { t: e.t, x: 0.5 + r * Math.cos(a), y: 0.5 + r * Math.sin(a),
+                energy: e.energy != null ? e.energy : (0.5 + 0.5 * vel) * S_REF, pitch, vel };
+  if (e.type != null) { rec.type = e.type; rec.area = e.area; rec.duration = e.duration; rec.dir = e.dir; }   // an events.json may carry its own impact numbers
+  return rec;
 }
 
 // Synthetic, Fur Alina-like: ~40 events/min, gaps 0.6..3.0 s, ~10 % doubles within 0.3 s,
@@ -290,21 +368,28 @@ function synthEvents() {
 }
 let EVENTS = synthEvents();
 
-// Random 45 s mode: only the DROPS vary (position, size, timing), seeded; the surface, its material numbers and the artist's sliders do not.
-// A random drop carries its own size `abs` (0.05 .. 2, a few large) that stands in for the Drop-size slider for that drop only;
-// the slider then acts as a multiplier relative to its default (x1 at 0.5), so the slider itself is never touched.
+// Random 45 s mode: only the EVENTS vary (position, energy, timing, and now the type: drop 80 % / strike 20 %), seeded; the surface, its
+// material numbers and the artist's sliders do not. A random event carries its own energy (0.05 .. 2, a few large) that stands in for the
+// Energy slider for that event only; the slider then acts as a multiplier relative to its default (x1 at 0.5), so the slider itself is never
+// touched. Position, energy and timing come from the same stream as before; the type and the strike's area (0.2 .. 0.8) from a second one,
+// two draws per event whatever its type, so every event keeps its place and size and only some become strikes.
 const RANDOM_LEN = 45;
 function randomEvents(seed) {
   const rnd = mulberry32(((seed | 0) * 2654435761 + 0x5EED1) >>> 0);
+  const rk = mulberry32(((seed | 0) * 2246822519 + 0x57121) >>> 0);
   const out = [];
   let t = 0.3 + rnd() * 1.2;
   while (t < RANDOM_LEN) {
     const pos = () => ({ x: 0.06 + 0.88 * rnd(), y: 0.06 + 0.88 * rnd() });
     const size = () => 0.05 + 1.95 * Math.pow(rnd(), 3);                 // median ~0.29, about 1 in 6 is >= 1.2
-    out.push(Object.assign({ t, abs: size(), size: 1, pitch: 0, vel: 1 }, pos()));
+    const kind = () => {
+      const strike = rk() < 0.2, a = 0.2 + 0.6 * rk();
+      return strike ? { type: 'strike', area: a, duration: IMPACT_PRESET.strike.duration, dir: 0 } : { type: 'drop', area: IMPACT_PRESET.drop.area, duration: 0, dir: 0 };
+    };
+    out.push(Object.assign({ t, energy: size() }, pos(), kind()));
     if (rnd() < 0.22) {                                                   // cluster of 2-3
       const extra = 1 + (rnd() < 0.4 ? 1 : 0);
-      for (let i = 0; i < extra; i++) { t += 0.3 + 0.25 * rnd(); if (t < RANDOM_LEN) out.push(Object.assign({ t, abs: size(), size: 1, pitch: 0, vel: 1 }, pos())); }
+      for (let i = 0; i < extra; i++) { t += 0.3 + 0.25 * rnd(); if (t < RANDOM_LEN) out.push(Object.assign({ t, energy: size() }, pos(), kind())); }
     }
     t += 0.3 + 3.7 * Math.pow(rnd(), 1.6);                                // irregular gaps 0.3 .. 4 s
   }
@@ -780,7 +865,10 @@ uniform float uFPow, uSpecPow, uBrushStr, uBrushDir, uIrid, uIdleScale, uIdleRat
 uniform float uEdgeW, uEdgeH, uDepthK;   // layer-edge bevel: width (uv), peak slope (from edgeHeight, see edgeSlope); depth: slope per uv of the eroded depth
 uniform vec3 uTint;
 uniform vec4 uW[4];            // idle waves: k.xy, omega, phase (seeded in JS)
+uniform sampler2D uBrushT, uHdriT;   // texture slots (1x1 white while empty): brushing (grey, tiled), HDRI (equirectangular)
+uniform float uHasBrush, uBrushTile, uHasHdri, uHdriLod, uHdriYaw;
 in vec2 vUv; out vec4 outC;
+const float HDRI_GAIN = 2.5;   // the HDRI is seen through a window: reflected direction R.xy / R.z x this = tan of the angle off the surface normal
 
 ${GLSL_COMMON}
 void main(){
@@ -833,11 +921,26 @@ void main(){
   // faint thin-film iridescence carried by the Fresnel term (uIrid = 0 for most liquids)
   vec3 film = 0.5 + 0.5 * cos(6.28318531 * (vec3(0.0, 0.33, 0.67) + (1.0 - cv) * 3.0 + dv.z * 2.0));
   vec3 Fc = vec3(F) * (1.0 + uIrid * (film - 0.5) * 2.0);
-  vec3 en = envMap(R.xy / max(R.z, 0.15) * 1.4, uLcol) * uTint;
+  vec3 en;
+  if (uHasHdri > 0.5) {
+    // HDRI: the surface normal looks along the map's forward direction (centre of the picture), image up = map up; the map turns
+    // about the vertical with the light azimuth (uHdriYaw = azimuth minus the surface's own). Display-referred -> linear, as the sky above.
+    vec3 hd = normalize(vec3(R.xy / max(R.z, 0.15) * HDRI_GAIN, 1.0));
+    vec2 htc = vec2(0.5 + (atan(hd.x, hd.z) + uHdriYaw) / 6.28318531, 0.5 - asin(clamp(hd.y, -1.0, 1.0)) / 3.14159265);
+    vec3 hc = textureLod(uHdriT, htc, uHdriLod).rgb;
+    en = hc * hc * uLcol * uTint;
+  } else {
+    en = envMap(R.xy / max(R.z, 0.15) * 1.4, uLcol) * uTint;
+  }
   // brushed streaks: direction and strength from the liquid
   float ca = cos(uBrushDir), sa = sin(uBrushDir);
   vec2 bu = vec2(ca * up.x + sa * up.y, -sa * up.x + ca * up.y);
-  float brush = (vnoise(vec2(bu.x * 5.0, bu.y * 300.0)) - 0.5) + 0.6 * (vnoise(vec2(bu.x * 9.0, bu.y * 130.0)) - 0.5);
+  float brush;
+  if (uHasBrush > 0.5) {      // a brushing texture replaces the streaks: grey, tiled uBrushTile times per long side, its rows along the brush direction
+    brush = (dot(texture(uBrushT, bu * uBrushTile).rgb, vec3(0.3333333)) - 0.5) * 1.4;
+  } else {
+    brush = (vnoise(vec2(bu.x * 5.0, bu.y * 300.0)) - 0.5) + 0.6 * (vnoise(vec2(bu.x * 9.0, bu.y * 130.0)) - 0.5);
+  }
   en *= 1.0 + brush * uBrushStr;
   vec3 H = normalize(L + V);
   float sp = pow(max(dot(nE, H), 0.0), uSpecPow) * max(1.0 + brush * uBrushStr * 4.0, 0.0);
@@ -927,9 +1030,14 @@ uniform float uFPow, uSpecPow, uBrushStr, uBrushDir, uBevel, uPitAmt, uDepthH;  
 uniform vec3 uTint, uColA, uColB, uColC, uColD, uColP;
 uniform vec4 uCov;             // oxide cover lo/hi, patch lo/hi
 uniform vec4 uSc;              // noise scale A, B, C, patch amount
+uniform sampler2D uAlbT, uHgtT, uRghT;   // texture slots (1x1 white while empty), fitted to the canvas like the layer images
+uniform float uHasAlb, uHasHgt, uHasRgh, uBump;
+uniform vec2 uHgtSz;           // height map size in texels
 in vec2 vUv; out vec4 outC;
 
 ${GLSL_COMMON}
+const float BUMP_H = 0.02;       // height map range (long-side units): white minus black; slope = BUMP_H x gradient x bumpStrength
+float hLum(vec3 c){ return dot(c, vec3(0.299, 0.587, 0.114)); }
 const float HRANGE = ${HRANGE.toFixed(4)}, AMAXD = ${AMAXD.toFixed(4)}, TMAX = ${TMAX.toFixed(4)};
 const float DEPTH_MAX = 0.02;    // fissure depth where the crack-map R = 1 (uv); R already grows with the crack width
 const float SOCK_D = 0.004;      // depth of a spall footprint (uv)
@@ -1025,6 +1133,7 @@ void main(){
   ox = mix(ox, uColP, pit);
   ox *= (1.0 + (m1 - 0.5) * 0.30) * (1.0 + flick) * (1.0 + brush * uBrushStr * 0.12);
   vec3 base = mix(metal, ox, cov);
+  if (uHasAlb > 0.5) base = texture(uAlbT, iuv).rgb * (1.0 + flick);   // the albedo texture replaces the procedural oxide / patch colour
   vec3 aTop = skin(p0, iuv, base, brush, gl0);
   vec3 a = skin(p, iuv, base, brush, gl1);
   float born = c0.g * 255.0;
@@ -1056,6 +1165,12 @@ void main(){
   vec2 gm = vec2(fbm3(mp + vec2(0.3, 0.0)) - n0, fbm3(mp + vec2(0.0, 0.3)) - n0);
   vec2 bev = gc * uBevel + gEu * rimW * 1.3;
   vec2 gs = bev + gm * 1.1 * cov * (1.0 - floorW) * (1.0 - 0.5 * pc) + tilt * 8.0 * pc;
+  if (uHasHgt > 0.5) {            // height texture -> bump: central differences over about one screen pixel, added to the crack / plate slope
+    vec2 hs = max(1.0 / uHgtSz, fwidth(uv)), ti = vec2(uv.x, 1.0 - uv.y);
+    float hxp = hLum(texture(uHgtT, ti + vec2(hs.x, 0.0)).rgb), hxm = hLum(texture(uHgtT, ti - vec2(hs.x, 0.0)).rgb);
+    float hyp = hLum(texture(uHgtT, ti - vec2(0.0, hs.y)).rgb), hym = hLum(texture(uHgtT, ti + vec2(0.0, hs.y)).rgb);   // image rows run down, uv.y runs up
+    gs += vec2(hxp - hxm, hyp - hym) / (2.0 * hs * uAsp) * (BUMP_H * uBump * (1.0 - floorW));
+  }
   vec3 nL = normalize(vec3(-gs, 1.0));
   vec3 dif = vec3(uAmb) + 0.75 * uLcol * max(dot(nL, L), 0.0);
   vec3 nE = normalize(vec3(-gs * 1.6, 1.0));
@@ -1067,7 +1182,9 @@ void main(){
   float F = F0 + (1.0 - F0) * pow(1.0 - cv, uFPow);
   vec3 en = envMap(Rv.xy / max(Rv.z, 0.15) * 1.4, uLcol) * uTint * (1.0 + brush * uBrushStr * 0.8);
   vec3 H = normalize(L + V);
-  float sp = pow(max(dot(nE, H), 0.0), uSpecPow) * max(1.0 + brush * uBrushStr * 4.0, 0.0) * (0.25 + 0.75 * bare) * (0.55 + 0.45 * m2) * (1.0 - 0.8 * floorW);
+  float spw = uSpecPow;
+  if (uHasRgh > 0.5) spw *= exp2((0.5 - hLum(texture(uRghT, iuv).rgb)) * 4.0);   // roughness 0.5 = the surface's own lobe, 0 = 4x tighter, 1 = 4x broader
+  float sp = pow(max(dot(nE, H), 0.0), spw) * max(1.0 + brush * uBrushStr * 4.0, 0.0) * (0.25 + 0.75 * bare) * (0.55 + 0.45 * m2) * (1.0 - 0.8 * floorW);
   vec3 col = alb * dif * (1.0 - F) + en * F * (1.0 - 0.5 * floorW) + sp * 0.45 * uLcol * mix(vec3(1.0), uTint, 0.7);
   col *= shade;
   // lit bevel on the top-skin edges (fissure lips, footprints, plate rims): the edge facing the light catches it
@@ -1102,12 +1219,14 @@ try {
   progMask = makeProg(FS_MASK, ['uIn', 'uMa', 'uMb', 'uMc', 'uMax', 'uStep', 'uSz', 'uAsp']);
   progDerive = makeProg(FS_DERIVE, ['uState', 'uSz']);
   progDisplay = makeProg(FS_DISPLAY, ['uDerived', 'uMask', 'uVar', 'uReflect', 'uRefract', 'uIdle', 'uTime', 'uNImg', 'uGrid', 'uGridL', 'uAsp', 'uW',
-    'uFPow', 'uSpecPow', 'uBrushStr', 'uBrushDir', 'uIrid', 'uIdleScale', 'uIdleRate', 'uEdgeW', 'uEdgeH', 'uDepthK', 'uTint'].concat(LIGHT_U));
+    'uFPow', 'uSpecPow', 'uBrushStr', 'uBrushDir', 'uIrid', 'uIdleScale', 'uIdleRate', 'uEdgeW', 'uEdgeH', 'uDepthK', 'uTint',
+    'uBrushT', 'uHdriT', 'uHasBrush', 'uBrushTile', 'uHasHdri', 'uHdriLod', 'uHdriYaw'].concat(LIGHT_U));
   progCrack = makeProg(FS_CRACK, ['uMode', 'uAsp'], VS_CRACK);
   progFrag = makeProg(FS_FRAG, ['uMode', 'uAsp'], VS_CRACK);
   progMaskS = makeProg(FS_MASK_SOLID, ['uIn', 'uInc', 'uMax', 'uStep']);
   progDisplayS = makeProg(FS_DISPLAY_SOLID, ['uCrack', 'uFrag', 'uMask', 'uVar', 'uReflect', 'uRefract', 'uIdle', 'uTime', 'uCrackRes', 'uCrackD', 'uNImg', 'uGrid', 'uGridL', 'uAsp',
-    'uFPow', 'uSpecPow', 'uBrushStr', 'uBrushDir', 'uBevel', 'uPitAmt', 'uDepthH', 'uTint', 'uColA', 'uColB', 'uColC', 'uColD', 'uColP', 'uCov', 'uSc'].concat(LIGHT_U));
+    'uFPow', 'uSpecPow', 'uBrushStr', 'uBrushDir', 'uBevel', 'uPitAmt', 'uDepthH', 'uTint', 'uColA', 'uColB', 'uColC', 'uColD', 'uColP', 'uCov', 'uSc',
+    'uAlbT', 'uHgtT', 'uRghT', 'uHasAlb', 'uHasHgt', 'uHasRgh', 'uBump', 'uHgtSz'].concat(LIGHT_U));
 } catch (err) { fail(String(err.message || err)); return; }
 
 const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
@@ -1241,12 +1360,12 @@ function fitPlan(sw, sh, W, H) {
   const k = Math.max(W / sw, H / sh), cw = W / k, ch = H / k;
   return { sx: (sw - cw) * ox, sy: (sh - ch) * oy, sw: cw, sh: ch, dx: 0, dy: 0, dw: W, dh: H };
 }
-function fitCanvas(img, W, H) {      // 8-bit image (PNG, JPEG, anything the browser decodes) -> W x H canvas, letterbox in the surface tone
+function fitCanvas(img, W, H, plan) {      // 8-bit image (PNG, JPEG, anything the browser decodes) -> W x H canvas, letterbox in the surface tone; plan: a fitPlan (default: the fit rule)
   const c = document.createElement('canvas'); c.width = W; c.height = H;
   const x = c.getContext('2d');
   x.fillStyle = `rgb(${SURFACE_TONE[0]},${SURFACE_TONE[1]},${SURFACE_TONE[2]})`;
   x.fillRect(0, 0, W, H);
-  const p = fitPlan(img.naturalWidth || img.width, img.naturalHeight || img.height, W, H);
+  const p = plan || fitPlan(img.naturalWidth || img.width, img.naturalHeight || img.height, W, H);
   x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
   x.drawImage(img, p.sx, p.sy, p.sw, p.sh, p.dx, p.dy, p.dw, p.dh);
   return c;
@@ -1320,6 +1439,102 @@ function buildLayers() {
     (sources.some((s) => s.kind === 'tiff' && s.img.bits === 16) && !var16 ? ' (this device cannot hold 16-bit layers: reduced to 8 bits)' : '') + '.';
 }
 
+/* ======================================================================
+   TEXTURE SLOTS (per surface family; they persist across surface switches and are not part of the saved settings).
+     solids   albedo (replaces the procedural oxide / patch colour), height (bump, strength = bumpStrength), roughness (specular power)
+              These three are fitted to the canvas by the same fit rule as the layer images (cover / contain / stretch + offset) and
+              re-fitted when the aspect or the fit changes. Long side min(TEX_MAX, the picture's own) at the canvas aspect.
+     liquids  brushing (grey, tiled brushTile times across the long side, its rows along the brush direction; replaces the procedural
+              streaks), HDRI (equirectangular; the Fresnel reflection reads it by the reflected direction; replaces the procedural
+              environment). Neither is fitted: the picture is used as it is, scaled down to TEX_MAX on its longest side.
+   Same readers as the layers: PNG / JPEG through the browser, TIFF through the inline decoder (8 / 16 bit; 16-bit is kept as RGBA16F).
+   An empty slot is a 1x1 white texture and a flag the shaders test, so an empty slot changes nothing.
+   ====================================================================== */
+const SLOT_DEFS = {
+  albedo:    { family: 'solid',  fitted: true,  note: 'tnAlbedo',    hint: 'replaces the procedural rust / verdigris colour' },
+  height:    { family: 'solid',  fitted: true,  note: 'tnHeight',    hint: 'grey → bump (strength below)' },
+  roughness: { family: 'solid',  fitted: true,  note: 'tnRoughness', hint: 'optional, grey; 0.5 = the surface’s own gloss' },
+  brushing:  { family: 'liquid', fitted: false, note: 'tnBrushing',  hint: 'optional, grey, tiled; rows run along the brush direction' },
+  hdri:      { family: 'liquid', fitted: false, note: 'tnHdri',      hint: 'equirectangular, reflected in the Fresnel term; turns with the light azimuth' }
+};
+const SLOT_KEYS = Object.keys(SLOT_DEFS);
+const slots = {};
+SLOT_KEYS.forEach((k) => { slots[k] = { src: null, tex: null, has: false, w: 0, h: 0, bits: 8, from: null }; });
+const dummyTex = (() => {
+  const t = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([255, 255, 255, 255]));
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return t;
+})();
+const slotTex = (k) => (slots[k].has ? slots[k].tex : dummyTex);
+const drainGL = () => { for (let i = 0; i < 8 && gl.getError() !== gl.NO_ERROR; i++) { /* only the next upload's error is read */ } };
+function sourceSize(src) { return src.kind === 'tiff' ? [src.img.width, src.img.height] : [src.el.naturalWidth || src.el.width, src.el.naturalHeight || src.el.height]; }
+
+// slot.src -> raster at the slot's size -> GPU texture (RGBA16F when the source is a 16-bit TIFF and the device can, else RGBA8), mipmapped.
+function buildSlot(key) {
+  const d = SLOT_DEFS[key], s = slots[key], src = s.src;
+  const [sw, sh] = sourceSize(src);
+  let W, H, plan;
+  if (d.fitted) { [W, H] = dimsFor(Math.max(64, Math.min(TEX_MAX, Math.max(sw, sh)))); plan = fitPlan(sw, sh, W, H); }   // no larger than the picture itself
+  else { const k = Math.min(1, TEX_MAX / Math.max(sw, sh)); W = Math.max(1, Math.round(sw * k)); H = Math.max(1, Math.round(sh * k)); plan = { sx: 0, sy: 0, sw, sh, dx: 0, dy: 0, dw: W, dh: H }; }
+  const tiff = src.kind === 'tiff';
+  const f32 = tiff ? resampleRaw(src.img, W, H, plan) : null;
+  const canvas16 = tiff && src.img.bits === 16 && can16;
+  if (!s.tex) s.tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, s.tex);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  let done = false;
+  if (canvas16) {
+    drainGL();
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, W, H, 0, gl.RGBA, gl.FLOAT, f32);
+    if (gl.getError() === gl.NO_ERROR) { gl.generateMipmap(gl.TEXTURE_2D); done = gl.getError() === gl.NO_ERROR; }
+  }
+  if (!done) {
+    let px;
+    if (tiff) { px = new Uint8Array(W * H * 4); for (let i = 0; i < px.length; i++) px[i] = Math.round(Math.min(1, Math.max(0, f32[i])) * 255); }
+    else { const id = fitCanvas(src.el, W, H, plan).getContext('2d').getImageData(0, 0, W, H).data; px = new Uint8Array(id.buffer, id.byteOffset, id.length); }
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, W, H, 0, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    gl.generateMipmap(gl.TEXTURE_2D);
+  }
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, d.fitted ? gl.CLAMP_TO_EDGE : gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, d.fitted || key === 'hdri' ? gl.CLAMP_TO_EDGE : gl.REPEAT);
+  s.has = true; s.w = W; s.h = H; s.bits = done ? 16 : 8; s.from = [sw, sh];
+  showSlot(key);
+}
+function showSlot(key) {
+  const d = SLOT_DEFS[key], s = slots[key], n = $(d.note);
+  n.classList.remove('warn');
+  n.textContent = s.has
+    ? s.src.name + ' · ' + s.w + '×' + s.h + (s.from[0] > s.w || s.from[1] > s.h ? ' (scaled down from ' + s.from[0] + '×' + s.from[1] + ')' : '') + ' · ' + s.bits + '-bit'
+    : 'empty · ' + d.hint;
+}
+async function loadSlot(key, file) {
+  const d = SLOT_DEFS[key], s = slots[key];
+  if (!d || !file) return false;
+  try {
+    const src = await readSource(file), prev = s.src;
+    s.src = src;
+    try { buildSlot(key); }
+    catch (err) { s.src = prev; if (prev) buildSlot(key); throw err; }
+  } catch (err) {
+    const n = $(d.note); n.textContent = file.name + ': ' + (err && err.message || err); n.classList.add('warn');
+    if (!/refused/.test(String(err && err.message))) console.warn(err);
+    return false;
+  }
+  syncValues();
+  return true;
+}
+function clearSlot(key) {
+  const s = slots[key];
+  if (s.tex) { gl.deleteTexture(s.tex); s.tex = null; }
+  s.src = null; s.has = false; s.w = s.h = 0;
+  showSlot(key); syncValues();
+}
+function buildFittedSlots() { SLOT_KEYS.forEach((k) => { if (SLOT_DEFS[k].fitted && slots[k].src) buildSlot(k); }); }
+
 // Seeded idle ripple waves (k.xy in uv radians, omega, phase)
 const idleW = (() => {
   const r = mulberry32(777), a = new Float32Array(16);
@@ -1339,8 +1554,9 @@ const idleW = (() => {
 //   edgeSharp    layer-edge lip: 0 = the old wide crossfade, 1 = the lip is one mask texel wide
 //   edgeW / edgeH  bevel at the layer edge (liquid): width in uv, height 0..1 (-> peak slope, edgeSlope)
 //   th0..th3     layer thicknesses in depth units; dscale  visible depth (depth units -> height) scale
+//   size         the Energy slider (was Drop size); bump  height-texture bump strength; brushTile  brushing-texture repeats across the long side
 const ARTIST = { size: 0.5, attack: 0.25, wave: 0.16, rings: 2, speed: 0.30, damp: 0.008, spread: 0.6, lag: 0.6, wear: 0.5,
-                 edgeSharp: 0.8, edgeW: 0.04, edgeH: 0.3, th0: 1, th1: 1, th2: 1, th3: 1, dscale: 0.3 };
+                 edgeSharp: 0.8, edgeW: 0.04, edgeH: 0.3, th0: 1, th1: 1, th2: 1, th3: 1, dscale: 0.3, bump: 1, brushTile: 2 };
 
 // LIQUIDS: material and medium only.
 //   tension      surface tension: h += tension * laplacian(h) once per substep (rounds off fine ripples, max 0.25)
@@ -1425,7 +1641,7 @@ function kelvinRGB(K) {
 }
 
 let liquidKey = 'mercury', liquid = LIQUIDS.mercury;
-let family = 'liquid', solid = null;      // active surface family; `liquid` stays the last chosen liquid, `solid` the active solid
+let family = 'liquid', solid = null, solidKey = '';      // active surface family; `liquid` stays the last chosen liquid, `solid` the active solid
 const params = Object.assign({ reflect: liquid.fresnelBase, refract: liquid.refract, idle: liquid.idle, time: liquid.time }, ARTIST);
 let playing = true, autoEvents = false, stepCount = 0, acc = 0, evIdx = 0, evCount = 0;
 let manualQ = [], manualN = 0, tapN = 0;
@@ -1456,7 +1672,7 @@ const ramp = (a, att) => (a <= 0 ? 0 : att <= 0 || a >= att ? 1 : (() => { const
 
 // Snapshot of the current parameters for one drop (so later slider moves don't corrupt its reveal).
 function makeDrop(ev) {
-  const k = dropSize(ev) / S_REF, sc = Math.sqrt(k);
+  const k = ev.energy / S_REF, sc = Math.sqrt(k);
   const lam = Math.max(params.wave * sc, MIN_LAM);                    // radius ~ sqrt(size)
   const sig = lam * 0.5 * (params.rings + 0.5);                       // envelope width: ringCount windows the cosine
   const st = simState();
@@ -1465,6 +1681,25 @@ function makeDrop(ev) {
            ero: Math.min(1, Math.max(0.05, ERODE_GAIN * k)),                 // partial erosion: bigger drop, more of a layer
            f0: 1 - (0.06 + 0.94 * clamp01(params.wear)) };                   // feather starts at f0 * radius (0 = from the centre)
 }
+// Strike on a liquid: two entries in the same drop list. (1) the swell: a broad, low wave packet over `area` (a near zero-mean damped
+// cosine, so it leaves no standing pit; wavelength 2.4 sigma), building over Attack + duration, with a wide shallow reveal; (2) the splash:
+// a short ring train (1.5 ring windows, a little shorter than the drop's wavelength) that builds over the strike's own short duration.
+// Radius of the swell grows with area (and slowly with energy); both amplitudes are below a drop's at the same energy, and the swell's slope is
+// several times gentler (it is broad), so a strike reads as one long swell and a few rings where a drop is many tight rings.
+const STRIKE_SWELL_AMP = 0.9, STRIKE_SPLASH_AMP = 0.75, STRIKE_SWELL_ERO = 0.6;
+function makeStrike(ev) {
+  const k = ev.energy / S_REF, sc = Math.sqrt(k), st = simState();
+  const x = ev.x, y = 1 - ev.y;
+  const ero = Math.min(1, Math.max(0.05, ERODE_GAIN * k)), f0 = 1 - (0.06 + 0.94 * clamp01(params.wear));
+  const sigS = Math.min(0.42, Math.max(0.04, (0.04 + 0.38 * ev.area) * Math.pow(k, 0.25))), lamS = 2.42 * sigS, attS = params.attack + ev.duration;
+  const swell = { x, y, t0: stepCount, amp: -DROP_AMP * k * STRIKE_SWELL_AMP, lam: lamS, sig: sigS, att: attS,
+                  Rrev: Math.min(0.7, Math.max(0.04, 1.7 * sigS)), dur: Math.max(0.04, attS + params.lag), c: st.c, ero: ero * STRIKE_SWELL_ERO, f0 };
+  const lamP = Math.max(params.wave * sc * 0.75, MIN_LAM), sigP = lamP * 0.5 * 2.0, attP = Math.min(params.attack, Math.max(0.03, ev.duration));
+  const splash = { x, y, t0: stepCount, amp: -DROP_AMP * k * STRIKE_SPLASH_AMP, lam: lamP, sig: sigP, att: attP,
+                   Rrev: Math.min(0.7, Math.max(0.04, 1.7 * sigP)), dur: Math.max(0.04, attP + params.lag), c: st.c, ero, f0 };
+  return [swell, splash];
+}
+const makeDrops = (ev) => (ev.type === 'strike' ? makeStrike(ev) : [makeDrop(ev)]);
 function addDrop(d) {
   drops = drops.filter((q) => (stepCount - q.t0) * DT < SIM_LIFE);
   if (drops.length >= MAXD) drops.shift();
@@ -1489,7 +1724,7 @@ function fillDrops() {
 
 /* ======================================================================
    SOLID family: crack clusters and spalling.
-   Impact = drop size: s = event size x Drop-size slider (0.05 .. 2). s sets, per drop,
+   Impact = energy: s = the event's energy (0.05 .. 2; a strike: see STRIKE_S). s sets, per impact,
      core half-width  w(s) = 0.001 .. 0.012 uv      ray count   RAY_TAB(s): 1-2 (s<0.2) .. 5 (s=0.5) .. 7-12 (s>=1.2)
      ray length       0.26 uv x sqrt(s/0.5)          branch generations  (Ring count - 1) x genScale(s)  (0 below ~0.12, 1 at 0.5, 2.2 at 2)
      spalling         s >= 1.2: 2..8 plates between neighbouring rays
@@ -1640,13 +1875,13 @@ function segsCross(ax, ay, bx, by, cx, cy, dx, dy) {
 
 // Spalling: between neighbouring primary rays, an inner and an outer radius -> a polygon (ray samples + two ring cracks).
 // The plate is the polygon inset by the crack width; it is stored as a fan with the distance to each edge (see emitPlate).
-function planFragments(rnd, ox, oy, prims, s, sc, tm, v, att, t0, polys) {
+function planFragments(rnd, ox, oy, prims, s, sc, tm, v, att, t0, polys, fp) {   // fp: a strike's footprint { wide, more } (plate scale, extra plates), or null
   if (s < FRAG_S0 || prims.length < 3) return;
   const u = clamp01((s - FRAG_S0) / (2 - FRAG_S0));
-  const want = Math.min(prims.length, Math.max(2, Math.min(8, Math.round(2 + 6 * u))));
+  const want = Math.min(prims.length, Math.max(2, Math.min(8, Math.round(2 + 6 * u + (fp ? fp.more : 0)))));
   const idx = prims.map((_, i) => i);
   for (let i = idx.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); const q = idx[i]; idx[i] = idx[j]; idx[j] = q; }
-  const rs = 0.045 + 0.03 * sc;
+  const rs = (0.045 + 0.03 * sc) * (fp ? fp.wide : 1);
   let made = 0;
   for (const wi of idx) {
     if (made >= want) break;
@@ -1729,11 +1964,16 @@ function planFragments(rnd, ox, oy, prims, s, sc, tm, v, att, t0, polys) {
   }
 }
 
+// A strike on a solid is the large-impact path whatever its energy: the effective size is energy x STRIKE_S, at least FRAG_S0 (spalling, 7+
+// rays), and its footprint grows with `area`: the plates are cut at wider radii (x 0.55 .. 2.25), up to 2 more plates, rays 0.85 .. 1.15 x long.
+const STRIKE_S = 2.4;
 function spawnCracks(ev) {
   const seq = dropSeq++;
   const ox = ev.x * ASPX, oy = (1 - ev.y) * ASPY;                    // physical position (long-side units); all crack geometry lives there
   const rnd = mulberry32(hash3(seq, Math.round(ox * 4096), Math.round(oy * 4096)));
-  const s = dropSize(ev);                                           // effective drop size 0.05 .. 2
+  const strike = ev.type === 'strike';
+  const s = strike ? Math.min(2, Math.max(FRAG_S0, ev.energy * STRIKE_S)) : ev.energy;   // effective size 0.05 .. 2
+  const fp = strike ? { wide: 0.55 + 1.7 * ev.area, more: Math.round(2 * ev.area) } : null, lenK = strike ? 0.85 + 0.3 * ev.area : 1;
   const k = s / S_REF, sc = Math.sqrt(k);
   const reach = params.spread >= SPREAD_OFF - 1e-9 ? 1.5 : 0.5 * params.spread;
   const stepL = Math.min(0.12, Math.max(0.012, params.wave * 0.3));
@@ -1750,7 +1990,7 @@ function spawnCracks(ev) {
   const a0 = rnd() * Math.PI * 2;
   for (let i = 0; i < nRays; i++) {
     const ang = a0 + (Math.PI * 2) * (i + (rnd() - 0.5) * 0.7) / nRays;
-    const len = Math.min(reach, CRACK_L0 * sc * (0.6 + 0.6 * rnd()));
+    const len = Math.min(reach, CRACK_L0 * sc * (0.6 + 0.6 * rnd()) * lenK);
     const w0 = wS * (0.85 + 0.3 * rnd());
     const P = buildPoly(rnd, g, ox, oy, ang, len, 0, 0, 0.92 + 0.16 * rnd(), w0, tm);
     if (!P) continue;
@@ -1778,7 +2018,7 @@ function spawnCracks(ev) {
     }
   }
   const v = CRACK_V * params.speed;
-  planFragments(rnd, ox, oy, prims, s, sc, tm, v, params.attack, stepCount, polys);
+  planFragments(rnd, ox, oy, prims, s, sc, tm, v, params.attack, stepCount, polys, fp);
   // remember where this drop cracked (each drop counts once per cell), after all lookups
   for (const P of polys) for (let i = 0; i < P.n; i++) {
     const cx = Math.floor(P.x[i] * OCC), cy = Math.floor(P.y[i] * OCC);
@@ -1968,15 +2208,22 @@ function maskSolidPass() {
   mask.flip();
 }
 
+// One event -> the surface. sweep / blow / flow are stored and ignored (passes 4 / 5); everything else is counted and spawned.
+let ignoredEvents = [], ignoredN = 0;
+function applyEvent(ev) {
+  if (!IMPACT_ACTIVE[ev.type]) { ignoredN++; if (ignoredEvents.length < 1000) ignoredEvents.push(ev); return; }
+  evCount++;
+  if (family === 'solid') spawnCracks(ev); else makeDrops(ev).forEach(addDrop);
+}
 function substep() {
   const t = stepCount * DT;
-  let ev = null;
-  if (manualQ.length) { ev = manualQ.shift(); evCount++; }
-  else if (randomOn && randomIdx < randomList.length && randomList[randomIdx].t <= t + 1e-9) { ev = randomList[randomIdx++]; evCount++; }
-  else if (!randomOn && autoEvents && evIdx < EVENTS.length && EVENTS[evIdx].t <= t + 1e-9) { ev = EVENTS[evIdx++]; evCount++; }
-  else if (testDrop && t >= testDrop.t - 1e-9) { ev = { t, x: 0.5, y: 0.5, size: 1, pitch: 0, vel: 1 }; testDrop = null; evCount++; }
+  let ev = null, scaled = false;
+  if (manualQ.length) { const m = manualQ.shift(); ev = m.ev; scaled = m.scaled; }
+  else if (randomOn && randomIdx < randomList.length && randomList[randomIdx].t <= t + 1e-9) { ev = randomList[randomIdx++]; scaled = true; }
+  else if (!randomOn && autoEvents && evIdx < EVENTS.length && EVENTS[evIdx].t <= t + 1e-9) { ev = EVENTS[evIdx++]; scaled = true; }
+  else if (testDrop && t >= testDrop.t - 1e-9) { ev = { t, x: 0.5, y: 0.5, energy: params.size }; testDrop = null; }
   if (randomOn && t >= RANDOM_LEN - 1e-9) { randomOn = false; randomDone = true; }   // auto-stop: the surface keeps its state
-  if (ev) { if (family === 'solid') spawnCracks(ev); else addDrop(makeDrop(ev)); }
+  if (ev) applyEvent(resolveEvent(ev, scaled));
   if (family === 'solid') {                            // no wave simulation: cracks grow, the erosion follows them
     crackPass();
     fragPass();
@@ -2005,6 +2252,7 @@ function restart() {
   cdrops = []; dropSeq = 0; occ.fill(0); occStamp.fill(0); frags = []; fragBorn = 0; testDrop = testDropSpec ? { t: testDropSpec } : null;
   randomOn = false; randomDone = false; randomIdx = 0; randomList = [];
   stepCount = 0; acc = 0; evIdx = 0; evCount = 0; manualQ = []; manualN = 0; tapN = 0; drops = [];
+  ignoredEvents = []; ignoredN = 0;
 }
 
 // Manual drop: same position rule, driven by a counter so it is reproducible too.
@@ -2012,16 +2260,16 @@ function nextEvent() {
   const i = manualN++;
   const pitch = 0.5 + 0.42 * Math.sin(i * 1.7 + 0.3);
   const e = dropFromEvent({ t: stepCount * DT + i * 0.37, pitch, vel: 0.55 + 0.45 * Math.sin(i * 2.3 + 1.0) * 0.5 + 0.2 });
-  manualQ.push(e);
+  manualQ.push({ ev: e, scaled: true });
   if (!playing) substep();     // paused: advance exactly one substep so the drop lands
 }
 
-// Tap / click on the canvas: drop at that point with the current drop size (event size 1 -> slider value).
+// Tap / click on the canvas: an impact at that point (type, area, duration, direction from the IMPACT block; energy = the Energy slider).
 function tapDrop(cx, cy) {
   const r = canvas.getBoundingClientRect();
   const x = (cx - r.left) / r.width, y = (cy - r.top) / r.height;
   if (x < 0 || x > 1 || y < 0 || y > 1) return;
-  manualQ.push({ t: stepCount * DT, x, y, size: 1, pitch: 0, vel: 1 });
+  manualQ.push({ ev: { t: stepCount * DT, x, y, energy: params.size }, scaled: false });
   tapN++;
   if (!playing) substep();
 }
@@ -2081,6 +2329,10 @@ function render() {
   gl.uniform1f(P.u.uIrid, L.irid); gl.uniform1f(P.u.uIdleScale, L.idleScale); gl.uniform1f(P.u.uIdleRate, L.idleRate);
   gl.uniform1f(P.u.uEdgeW, params.edgeW); gl.uniform1f(P.u.uEdgeH, edgeSlope(params.edgeH));
   gl.uniform1f(P.u.uDepthK, params.dscale * DEPTH_G); gl.uniform3fv(P.u.uTint, L.tint);
+  bindTex(3, gl.TEXTURE_2D, slotTex('brushing'), P.u.uBrushT); bindTex(4, gl.TEXTURE_2D, slotTex('hdri'), P.u.uHdriT);
+  gl.uniform1f(P.u.uHasBrush, slots.brushing.has ? 1 : 0); gl.uniform1f(P.u.uBrushTile, params.brushTile);
+  gl.uniform1f(P.u.uHasHdri, slots.hdri.has ? 1 : 0); gl.uniform1f(P.u.uHdriYaw, (light.az - lightRef.az) / DEG);
+  gl.uniform1f(P.u.uHdriLod, clamp(0.5 * Math.log2(520 / L.specPow), 0, 3));   // a rougher liquid reads a blurrier HDRI (mercury sharp, lead soft)
   setLightUniforms(P);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
 }
@@ -2104,6 +2356,9 @@ function renderSolid(w, h) {
   gl.uniform3fv(P.u.uColC, S.oxL); gl.uniform3fv(P.u.uColD, S.patch); gl.uniform3fv(P.u.uColP, S.pit);
   gl.uniform4f(P.u.uCov, S.cover[0], S.cover[1], S.patchTh[0], S.patchTh[1]);
   gl.uniform4f(P.u.uSc, S.scaleA, S.scaleB, S.scaleC, S.patchAmt);
+  bindTex(4, gl.TEXTURE_2D, slotTex('albedo'), P.u.uAlbT); bindTex(5, gl.TEXTURE_2D, slotTex('height'), P.u.uHgtT); bindTex(6, gl.TEXTURE_2D, slotTex('roughness'), P.u.uRghT);
+  gl.uniform1f(P.u.uHasAlb, slots.albedo.has ? 1 : 0); gl.uniform1f(P.u.uHasHgt, slots.height.has ? 1 : 0); gl.uniform1f(P.u.uHasRgh, slots.roughness.has ? 1 : 0);
+  gl.uniform1f(P.u.uBump, params.bump); gl.uniform2f(P.u.uHgtSz, Math.max(1, slots.height.w), Math.max(1, slots.height.h));
   gl.drawArrays(gl.TRIANGLES, 0, 3);
 }
 
@@ -2117,11 +2372,12 @@ function frame(now) {
     if (acc >= DT) acc = 0;     // backlog: slow down rather than spiral
   }
   render();
-  const key = Math.floor(stepCount / 6) + ':' + evCount + ':' + fragBorn;
+  const key = Math.floor(stepCount / 6) + ':' + evCount + ':' + fragBorn + ':' + ignoredN;
   if (key !== hudKey) {
     hudKey = key;
     if (family === 'solid' && fragBorn !== jsonFrag) { jsonFrag = fragBorn; syncValues(); }
     $('hud').textContent = (stepCount * DT).toFixed(1) + ' s · ' + evCount + ' drops' + ((manualN + tapN) ? ' (' + (manualN + tapN) + ' manual)' : '') +
+      (ignoredN ? ' · ' + ignoredN + ' ignored (pass 4/5)' : '') +
       (randomOn ? ' · random seed ' + randomSeed + ' · ' + randomLabel() : (randomDone ? ' · random done' : ''));
     $('rLeft').textContent = randomLabel();
     $('bRand').setAttribute('aria-pressed', randomOn ? 'true' : 'false');
@@ -2139,20 +2395,22 @@ const fmt = { reflect: (v) => v.toFixed(2), refract: (v) => v.toFixed(2), damp: 
               wave: (v) => v.toFixed(3), rings: (v) => v.toFixed(1), attack: (v) => v.toFixed(2),
               spread: (v) => (v >= SPREAD_OFF - 1e-9 ? 'off' : v.toFixed(2)), lag: (v) => v.toFixed(2), wear: (v) => v.toFixed(2),
               edgeSharp: (v) => v.toFixed(2), edgeW: (v) => v.toFixed(4), edgeH: (v) => v.toFixed(2),
-              th0: (v) => v.toFixed(2), th1: (v) => v.toFixed(2), th2: (v) => v.toFixed(2), th3: (v) => v.toFixed(2), dscale: (v) => v.toFixed(2) };
+              th0: (v) => v.toFixed(2), th1: (v) => v.toFixed(2), th2: (v) => v.toFixed(2), th3: (v) => v.toFixed(2), dscale: (v) => v.toFixed(2),
+              bump: (v) => v.toFixed(2), brushTile: (v) => v.toFixed(2) + '×' };
 const ids = { size: 'Size', attack: 'Attack', wave: 'Wave', rings: 'Rings', speed: 'Speed', damp: 'Damp', spread: 'Spread',
               lag: 'Lag', wear: 'Wear', edgeSharp: 'ESharp', edgeW: 'EW', edgeH: 'EH', th0: 'Th0', th1: 'Th1', th2: 'Th2', th3: 'Th3', dscale: 'DScale',
-              reflect: 'Reflect', refract: 'Refract', idle: 'Idle', time: 'Time' };
+              reflect: 'Reflect', refract: 'Refract', idle: 'Idle', time: 'Time', bump: 'Bump', brushTile: 'Tile' };
 
 const r3 = (v) => Math.round(v * 1000) / 1000;
 const seedVal = () => { const v = parseInt($('nSeed').value, 10); return Number.isFinite(v) ? Math.max(0, Math.min(999999, v)) : 1; };
-function syncValues() {
+function readout() {
   const cur = family === 'solid' ? solid : liquid;
-  const o = { surface: cur.name, family };
+  const o = { surface: cur.name, surfaceKey: family === 'solid' ? solidKey : liquidKey, family };
   if (family === 'liquid') o.liquid = liquid.name;
   o.autoEvents = autoEvents;
   o.randomMode = randomOn ? 'running' : (randomDone ? 'done' : false);
   o.seed = seedVal();
+  o.impact = { type: impact.type, energy: params.size, area: r3(impact.area), duration: r3(impact.duration), dir: r3(impact.dir) };   // dir in degrees (the record itself keeps radians)
   Object.assign(o, { dropSize: params.size, attack: params.attack, wavelength: params.wave, ringCount: params.rings, waveSpeed: params.speed });
   if (family === 'solid') {
     const reach = params.spread >= SPREAD_OFF - 1e-9 ? null : r3(0.5 * params.spread);
@@ -2174,9 +2432,12 @@ function syncValues() {
     reflect: params.reflect, refract: params.refract, idle: params.idle, timeScale: params.time,
     light: { azimuth: r3(light.az), elevation: r3(light.el), intensity: light.int, kelvin: light.K, ambient: light.amb },
     aspect: { preset: aspect.preset, w: aspect.w, h: aspect.h }, fit: { mode: fit.mode, x: fit.x, y: fit.y },
-    render: { w: renderSet.w, h: renderSet.h, fps: renderSet.fps, duration: renderSet.duration, label: renderSet.label } });
-  $('json').value = JSON.stringify(o, null, 1);
+    render: { w: renderSet.w, h: renderSet.h, fps: renderSet.fps, duration: renderSet.duration, label: renderSet.label, lock: renderSet.lock },
+    bumpStrength: params.bump, brushTile: params.brushTile,
+    textures: { albedo: slots.albedo.has, height: slots.height.has, roughness: slots.roughness.has, brushing: slots.brushing.has, hdri: slots.hdri.has } });   // which slots are filled, not the pixels
+  return o;
 }
+function syncValues() { $('json').value = JSON.stringify(readout(), null, 1); }
 Object.keys(ids).forEach((k) => {
   const s = $('s' + ids[k]), o = $('o' + ids[k]);
   const upd = () => { params[k] = parseFloat(s.value); o.textContent = fmt[k](params[k]); syncValues(); };
@@ -2227,7 +2488,7 @@ function applySurface(key) {
   const isSolid = !!SOLIDS[key];
   if (!isSolid && !LIQUIDS[key]) return false;
   const fam = isSolid ? 'solid' : 'liquid', changed = fam !== family;
-  if (isSolid) solid = SOLIDS[key]; else { liquidKey = key; liquid = LIQUIDS[key]; }
+  if (isSolid) { solid = SOLIDS[key]; solidKey = key; } else { liquidKey = key; liquid = LIQUIDS[key]; }
   family = fam;
   const d = isSolid ? solid : liquid;
   const set = { reflect: d.fresnelBase, refract: d.refract, idle: d.idle, time: d.time };
@@ -2240,6 +2501,7 @@ function applySurface(key) {
   $('oSpeed').textContent = fmt.speed(params.speed);
   $('fnote').textContent = isSolid ? 'Solid surface: a drop opens a crack cluster instead of a wave. Cracks grow, never heal, and erode along themselves.' : '';
   $('advNum').textContent = advText();
+  showTexFamily();
   syncValues();
   return true;
 }
@@ -2385,6 +2647,7 @@ function setAspect(w, h, preset, opts) {
   if (same && !opts.force) return true;
   if (!buildFields()) return false;
   if (proceduralMode) useProcedural(); else buildLayers();
+  buildFittedSlots();
   restart();
   if (!opts.noRender) renderFromAspect();
   showRender(); syncValues();
@@ -2408,14 +2671,154 @@ function setFit(mode, x, y, immediate) {
   if (y != null) fit.y = clamp(parseFloat(y) || 0, -1, 1);
   showFit(); syncValues();
   clearTimeout(fitTimer);
-  const go = () => { if (!proceduralMode) buildLayers(); };
+  const go = () => { if (!proceduralMode) buildLayers(); buildFittedSlots(); };
   if (immediate) go(); else fitTimer = setTimeout(go, 120);   // a TIFF re-fit can take a moment: wait for the slider to rest
 }
 document.querySelectorAll('[data-fit]').forEach((b) => b.addEventListener('click', () => setFit(b.dataset.fit, null, null)));
 $('sFX').addEventListener('input', (e) => setFit(null, e.target.value, null));
 $('sFY').addEventListener('input', (e) => setFit(null, null, e.target.value));
 
-// Console hook for a real events.json (array of {t, pitch, vel}).
+/* ======================================================================
+   IMPACT block, TEXTURES block, settings file (UI + state)
+   ====================================================================== */
+const IMPACT_NOTE = {
+  drop: 'Drop: a point, instant. It reads Energy only (area 0.1, duration 0 and direction 0 are fixed).',
+  strike: 'Strike: reads Energy and Area. Liquid: a broad, low swell spread over the area plus a short splash ring. Solid: a fissure with spalling; the footprint grows with the area.',
+  sweep: 'Sweep: pass 4. Selectable, but events of this type are stored and ignored for now.',
+  blow: 'Blow: pass 5. Selectable, but events of this type are stored and ignored for now.',
+  flow: 'Flow: pass 5. Selectable, but events of this type are stored and ignored for now.'
+};
+const IMP_UI = { area: ['sArea', 'oArea', (v) => v.toFixed(2)], duration: ['sDur', 'oDur', (v) => v.toFixed(2) + ' s'], dir: ['sDir', 'oDir', (v) => Math.round(v) + '°'] };
+function showImpact() {
+  document.querySelectorAll('[data-impact]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.impact === impact.type ? 'true' : 'false'));
+  Object.keys(IMP_UI).forEach((k) => { $(IMP_UI[k][0]).value = impact[k]; $(IMP_UI[k][1]).textContent = IMP_UI[k][2](impact[k]); });
+  const pt = impact.type === 'drop', fixed = pt || impact.type === 'strike';
+  [['cArea', 'sArea', pt], ['cDur', 'sDur', fixed], ['cDir', 'sDir', fixed]].forEach(([c, sl, off]) => { $(c).classList.toggle('off', off); $(sl).disabled = off; });
+  $('inote').textContent = IMPACT_NOTE[impact.type];
+}
+// Choosing a type loads its preset of area / duration / direction (keep: leave the numbers as they are, for a loaded settings file).
+function setImpactType(type, keep) {
+  if (IMPACT_TYPES.indexOf(type) < 0) return false;
+  impact.type = type;
+  if (!keep) Object.assign(impact, IMPACT_PRESET[type]);
+  showImpact(); syncValues();
+  return true;
+}
+document.querySelectorAll('[data-impact]').forEach((b) => b.addEventListener('click', () => setImpactType(b.dataset.impact)));
+Object.keys(IMP_UI).forEach((k) => $(IMP_UI[k][0]).addEventListener('input', (e) => {
+  impact[k] = parseFloat(e.target.value); $(IMP_UI[k][1]).textContent = IMP_UI[k][2](impact[k]); syncValues();
+}));
+
+function showTexFamily() { $('texSolid').hidden = family !== 'solid'; $('texLiquid').hidden = family === 'solid'; }
+document.querySelectorAll('input[data-slot]').forEach((inp) => inp.addEventListener('change', async (e) => {
+  const f = e.target.files && e.target.files[0]; e.target.value = '';
+  if (f) await loadSlot(inp.dataset.slot, f);
+}));
+document.querySelectorAll('[data-clear]').forEach((b) => b.addEventListener('click', () => clearSlot(b.dataset.clear)));
+
+// ---- settings file. Everything the readout shows plus `version`; the layer images and the textures are not saved.
+const SETTINGS_VERSION = 1;
+function settingsFile() {
+  const o = readout();
+  o.damping = params.damp;                                   // the readout shows null on a solid; the file keeps the slider's value
+  return Object.assign({ version: SETTINGS_VERSION }, o, { layers: 'not saved', textures: 'not saved' });
+}
+function showSetMsg(text, warn) { const m = $('setmsg'); m.textContent = text; m.className = 'note ' + (warn ? 'warn' : 'ok'); m.hidden = !text; }
+function saveSettings() {
+  const url = URL.createObjectURL(new Blob([JSON.stringify(settingsFile(), null, 1) + '\n'], { type: 'application/json' }));
+  const a = document.createElement('a'); a.href = url; a.download = 'xanadu-settings.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  showSetMsg('Saved xanadu-settings.json. The layer images and the textures are not saved.', false);
+}
+const SET_NAMES = { size: 'dropSize', attack: 'attack', wave: 'wavelength', rings: 'ringCount', speed: 'waveSpeed', damp: 'damping', spread: 'spread', lag: 'revealLag',
+                    wear: 'wearSoftness', edgeSharp: 'edgeSharpness', edgeW: 'edgeWidth', edgeH: 'edgeHeight', dscale: 'depthScale',
+                    reflect: 'reflect', refract: 'refract', idle: 'idle', time: 'timeScale', bump: 'bumpStrength', brushTile: 'brushTile' };
+const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
+function setSlider(k, v) {                                   // a slider by key, through its own input handler; the value is clamped to the slider's range
+  if (!isNum(v)) return false;
+  const sl = $('s' + ids[k]);
+  sl.value = String(clamp(v, parseFloat(sl.min), parseFloat(sl.max)));
+  sl.dispatchEvent(new Event('input'));
+  return true;
+}
+function surfaceKeyFor(o) {
+  const hit = (tab, name) => Object.keys(tab).filter((k) => tab[k].name === name)[0];
+  if (typeof o.surfaceKey === 'string' && (SOLIDS[o.surfaceKey] || LIQUIDS[o.surfaceKey] || SURFACE_ALIAS[o.surfaceKey])) return o.surfaceKey;
+  return typeof o.surface === 'string' ? (hit(LIQUIDS, o.surface) || hit(SOLIDS, o.surface)) : undefined;
+}
+// Restore a settings object. Unknown version: say so and apply what can be applied. Returns { notes, skipped }.
+function applySettings(o, fname) {
+  if (!o || typeof o !== 'object' || Array.isArray(o)) throw new Error('the file does not hold a settings object');
+  const notes = [], skipped = [];
+  if (o.version !== SETTINGS_VERSION) notes.push('Unknown settings version ' + (o.version === undefined ? '(none)' : JSON.stringify(o.version)) + ' (this build reads version ' + SETTINGS_VERSION + '): applying what can be applied.');
+  const A = o.aspect, F = o.fit;
+  if (A && typeof A === 'object' && A.w > 0 && A.h > 0) { if (!setAspect(A.w, A.h, typeof A.preset === 'string' ? A.preset : 'custom', { noRender: true })) skipped.push('aspect'); }
+  else if (o.aspect !== undefined) skipped.push('aspect');
+  if (F && typeof F === 'object' && (F.mode === 'cover' || F.mode === 'contain' || F.mode === 'stretch')) setFit(F.mode, isNum(F.x) ? F.x : 0, isNum(F.y) ? F.y : 0, true);
+  else if (o.fit !== undefined) skipped.push('fit');
+  const key = surfaceKeyFor(o);
+  if (key) applySurface(key); else { skipped.push('surface'); notes.push('Surface ' + JSON.stringify(o.surfaceKey || o.surface || null) + ' is not known: the current surface is kept.'); }
+  // sliders (after the surface: choosing a surface resets reflect / refract / idle / time)
+  Object.keys(SET_NAMES).forEach((k) => {
+    const name = SET_NAMES[k]; let v = o[name];
+    if (v === undefined || (name === 'damping' && v === null)) return;
+    if (k === 'spread' && v === 'off') v = SPREAD_OFF;
+    if (!setSlider(k, v)) skipped.push(name);
+  });
+  if (o.impact && isNum(o.impact.energy)) setSlider('size', o.impact.energy);
+  if (Array.isArray(o.thickness)) [0, 1, 2, 3].forEach((i) => { if (o.thickness[i] !== undefined && !setSlider('th' + i, o.thickness[i])) skipped.push('thickness[' + i + ']'); });
+  else if (o.thickness !== undefined) skipped.push('thickness');
+  // light: azimuth / elevation / ambient go back to following the surface when they equal its own
+  const Lg = o.light;
+  if (Lg && typeof Lg === 'object') {
+    [['az', 'azimuth', 0, 360], ['el', 'elevation', 5, 85], ['amb', 'ambient', 0, 1], ['int', 'intensity', 0, 3], ['K', 'kelvin', 2000, 10000]].forEach(([k, name, lo, hi]) => {
+      const v = Lg[name];
+      if (v === undefined) return;
+      if (!isNum(v)) { skipped.push('light.' + name); return; }
+      const x = clamp(v, lo, hi);
+      if (k in lightTouched) { lightTouched[k] = Math.abs(x - lightRef[k]) > 0.01; light[k] = lightTouched[k] ? x : lightRef[k]; } else light[k] = x;
+    });
+    showLight();
+  } else if (o.light !== undefined) skipped.push('light');
+  const R = o.render;
+  if (R && typeof R === 'object') {
+    if (isNum(R.w) && isNum(R.h)) [renderSet.w, renderSet.h] = fitRender(Math.round(R.w), Math.round(R.h), false);
+    if ([24, 25, 30, 60].indexOf(R.fps) >= 0) renderSet.fps = R.fps;
+    if (isNum(R.duration)) renderSet.duration = clamp(Math.round(R.duration), 1, 86400);
+    if (typeof R.label === 'string') renderSet.label = R.label.slice(0, 80);
+    if (typeof R.lock === 'boolean') renderSet.lock = R.lock;
+    showRender();
+  } else if (o.render !== undefined) skipped.push('render');
+  if (isNum(o.seed)) $('nSeed').value = String(clamp(Math.round(o.seed), 0, 999999)); else if (o.seed !== undefined) skipped.push('seed');
+  const I = o.impact;
+  if (I && typeof I === 'object') {
+    if (IMPACT_TYPES.indexOf(I.type) >= 0) setImpactType(I.type, false); else skipped.push('impact.type');
+    [['area', 0, 1], ['duration', 0, 3], ['dir', 0, 360]].forEach(([k, lo, hi]) => { if (I[k] === undefined) return; if (isNum(I[k])) impact[k] = clamp(I[k], lo, hi); else skipped.push('impact.' + k); });
+    showImpact();
+  } else if (o.impact !== undefined) skipped.push('impact');
+  restart(); playing = true; $('bPlay').textContent = 'Pause';
+  if (typeof o.autoEvents === 'boolean') setAuto(o.autoEvents);
+  syncValues();
+  const msg = notes.concat(['Loaded ' + (fname || 'settings') + (skipped.length ? '; not applied: ' + skipped.join(', ') : '') + '. The layer images and the textures are not part of the file.']);
+  showSetMsg(msg.join(' '), notes.length > 0 || skipped.length > 0);
+  return { notes, skipped };
+}
+function readText(file) {
+  if (file.text) return file.text();
+  return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = () => rej(r.error); r.readAsText(file); });
+}
+async function loadSettingsFile(file) {
+  let o;
+  try { o = JSON.parse(await readText(file)); }
+  catch (err) { showSetMsg(file.name + ' is not valid JSON (' + (err && err.message || err) + '). Nothing was changed.', true); return false; }
+  try { applySettings(o, file.name); return true; }
+  catch (err) { showSetMsg(file.name + ': ' + (err && err.message || err) + '. Nothing was changed.', true); return false; }
+}
+$('bSave').addEventListener('click', saveSettings);
+$('fLoad').addEventListener('change', async (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) await loadSettingsFile(f); });
+
+// Console hook for a real events.json (array of {t, pitch, vel}; each may also carry type / energy / area / duration / dir).
 window.XANADU = {
   get EVENTS() { return EVENTS; },
   randomEvents,
@@ -2426,6 +2829,12 @@ window.XANADU = {
   get fieldSizes() { return { sim: [simW, simH], field: [fieldW, fieldH], crack: [crackW, crackH], canvas: [canvas.width, canvas.height], layers: [varW, varH, var16 ? 16 : 8] }; },
   aspect, fit, renderSet,
   setAspect, setFit, loadFiles, decodeTIFF,
+  impact, setImpactType, resolveEvent,
+  get ignoredEvents() { return ignoredEvents; },
+  slots, loadTexture: loadSlot, clearTexture: clearSlot,
+  settingsFile, applySettings, saveSettings,
+  step(n) { for (let i = 0; i < n; i++) substep(); },                                              // test hooks: n substeps (1/60 s each) ...
+  fire(x, y) { manualQ.push({ ev: { t: stepCount * DT, x, y, energy: params.size }, scaled: false }); },   // ... and an impact at (x, y), as a tap
   readMask() {                       // test hook: the shown erosion depth, one float per texel (needs a 32-bit mask)
     const a = new Float32Array(fieldW * fieldH * 4);
     gl.bindFramebuffer(gl.FRAMEBUFFER, mask.cur.fbo);
@@ -2449,11 +2858,13 @@ try {
   // debug: #aspect=16:9 (or any W:H) sets the canvas aspect before anything else is built
   { const am = /[#?&]aspect=([0-9.]+):([0-9.]+)/.exec(location.href);
     if (am) { const key = am[1] + ':' + am[2]; setAspect(parseFloat(am[1]), parseFloat(am[2]), ASPECTS[key] ? key : 'custom', { force: true, noRender: false }); } }
-  showAspect(); showFit(); showRender();
+  showAspect(); showFit(); showRender(); showImpact(); SLOT_KEYS.forEach(showSlot);
   useProcedural();
   restart();
   applySurface('mercury');
   { const sm = /[#?&]surface=([a-z-]+)/.exec(location.href); if (sm) applySurface(sm[1]); }
+  // debug: #impact=strike (drop | strike | sweep | blow | flow) selects the impact type, with its preset numbers
+  { const im = /[#?&]impact=([a-z]+)/.exec(location.href); if (im) setImpactType(im[1]); }
   $('tAuto').checked = false;
   // debug: #seek=NN fast-forwards NN seconds of sim time before the first frame
   // debug: #auto=1 switches auto events on before the seek
