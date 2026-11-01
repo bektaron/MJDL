@@ -196,7 +196,7 @@ pre#advNum{margin:0 0 8px;padding:10px;font:12px/1.5 ui-monospace,SFMono-Regular
         <div class="ctl"><label for="sRepose">Repose angle</label><input id="sRepose" type="range" min="15" max="45" step="1" value="34"><output id="oRepose"></output></div>
         <div class="ctl"><label for="sGrSize">Grain size</label><input id="sGrSize" type="range" min="0.5" max="4" step="0.1" value="2"><output id="oGrSize"></output></div>
         <div class="ctl"><label for="sGrCon">Grain contrast</label><input id="sGrCon" type="range" min="0" max="0.5" step="0.01" value="0.18"><output id="oGrCon"></output></div>
-        <p class="note">Repose angle: the steepest slope a pile keeps; steeper grains slide (the angle of the rendered heightfield, Depth scale included). Grain size: noise period in pixels at 1024. The picture is the sand: an impact moves grains, with their colours, from the crater to its rim. Wavelength and Ring count set the crater radius (as a drop's footprint on a liquid), Energy its depth.</p>
+        <p class="note">Repose angle: the steepest slope a pile keeps; steeper grains slide (the angle of the rendered heightfield, Depth scale included). Grain size: noise period in pixels at 1024. The picture is the sand: an impact moves grains, with their colours, from the crater to its rim. Wavelength and Ring count set the crater radius (as a drop's footprint on a liquid); Energy sets the crater depth and radius (√(E/0.5)). Volume thrown beyond the canvas is lost.</p>
       </div>
       <div class="grp">Textures (kept when the surface changes; max 2048 per side)</div>
       <div id="texSolid">
@@ -1304,102 +1304,205 @@ void main(){
    No wave simulation (like the solid), no damping slider, no bevel and no lip at the edge of the eroded bed (the rim is the lip now).
    Fields, all at the erosion field size (fieldW x fieldH, FIELD_RES long side, square texels):
      mask  (as before)  .x eroded depth target, .y shown, depth units: how far the top of the BED lies below the original surface
-     dep   (new, RGBA16F ping-pong)  .x deposit height, depth units >= 0;  .yzw colour of the grains on top (display-referred 0..1); empty = (0,0,0,0)
+     dep   (new, ping-pong, RGBA32F where the device renders to it, RGBA16F fallback)  .x deposit height, depth units >= 0;  .yzw colour of the grains on top (display-referred 0..1); empty = (0,0,0,0)
    The deposit sits ON the eroded surface: the visible height of a texel is  H = dep.x - mask.y  (depth units, 0 = the original surface).
    DEPTH -> LENGTH (stated once, used by the repose slope and the display normals): one depth unit is  depthLen = Depth scale x DEPTH_UNIT  long-side
    units of height (the solid's heightfield, depthAt(): uv-height = shown depth x uDepthH; uv and long-side units are the same length for a height). One
    mask texel is 1 / fieldRes long-side units wide. So a slope of dH depth units per texel is the real slope dH x depthLen x fieldRes.
-   Per substep: [impact -> deposit pass (only while an event is building)] -> mask pass (the crater) -> REPOSE_ITER repose iterations (while any deposit exists).
+   Per substep: mask pass (the crater) -> [deposit pass (only while an event is building: it reads the mask before and after)] -> REPOSE_ITER repose iterations (while an event builds and for REPOSE_TAIL s after).
    ====================================================================== */
-const MAXS         = 4;      // strikes whose thrown grains can be building at once (each carries NTHROW discs in the deposit shader's uniforms); a fifth drops its discs, never its rim
-const NTHROW       = 12;     // thrown grains per strike
+const MAXS         = 6;      // strikes whose thrown grains can be building at once (each carries NTHROW discs in the deposit shader's uniforms: MAXS x NTHROW vec4 = 144 of the program's ~195); a seventh drops its discs (counted, shown in the HUD), its rim then holds their share
+const NTHROW       = 24;     // thrown grains per strike
+const THROW_R0     = 0.004;  // thrown grain radius, long-side units: 4 .. 12 px at 1024 (the grain size of a handful of sand, not an ink drop)
+const THROW_R1     = 0.012;
+const THROW_RIP    = 0.25;   // each disc's outline is r (1 + THROW_RIP sin(3 theta + phase)): a 3-lobed pebble, not a circle; its volume is the round one x (1 + THROW_RIP^2 / 2)
+const REPOSE_TAIL  = 8;      // seconds the repose passes keep running after the last granular event has finished building (they run while an event builds and then for this long; a slider move that changes the limit wakes them for as long again)
 const REPOSE_ITER  = 2;      // repose iterations per substep
 const REPOSE_K     = 0.5;    // fraction of the excess slope e moved per iteration = REPOSE_K x e / 2 to each lower neighbour; <= 0.5 is the usual stable choice for a 4-neighbour relaxation (a texel with four lower neighbours sends 4 x K x e / 2 <= e)
-const REPOSE_Q     = 1 / 2048;  // flows are whole multiples of this (depth units): a half-float holds multiples of 2^-11 exactly below 1, so sender and receiver add and subtract the same number with no rounding and volume is conserved exactly there (above 1 a result may round by 2^-11, unbiased). A flow under 2 Q / K is not moved: the slope residue is at most 4 Q = 0.002 depth units per texel
+const REPOSE_Q     = 1 / 2048;  // flows are whole multiples of this (depth units). The deposit is RGBA32F where the device renders to it (as the wave state): a float holds a multiple of 2^-11 exactly up to a height of 2^13, so sender and receiver add and subtract the same number and volume is conserved (to the rounding of a float, ~1e-7 of a transfer). The RGBA16F FALLBACK (no 32-bit float target) keeps the old limit: exact below 1 depth unit, above it a result rounds by 2^-10 / 2^-9 and the sender's loss and the receiver's gain disagree (volume creep, a known precision flag). A flow under 2 Q / K is not moved: the slope residue is at most 4 Q = 0.002 depth units per texel
 const TOPGRAIN     = 0.25;   // top-grain rule: the largest single inflow takes over the colour of a texel when it is at least this fraction of the texel's deposit after the step
 const DEP_EPS      = 0.002;  // deposit height (depth units) below which a texel counts as bare; the display scatters grains between 0 and 4 x DEP_EPS
 const GRAN_DEPTH_K = 3.0;    // a granular heightfield is drawn (and made to slide: the repose slope uses it too) this many times deeper than the solid's at the same Depth scale: sand is meant to have depth, and a default crater or rim is otherwise 1-2 px
-const GRAN_SHADE_K = 2.0;    // shading only: the heightfield is exaggerated this much vertically in the normal, the occlusion and the cast shadow (a rim of a default strike is 0.3 px high at Depth scale 0.3, a crater wall ~1 degree); the repose slope is NOT exaggerated
+const GRAN_SHADE_K = 1.0;    // shading only: vertical exaggeration of the heightfield in the normal, the occlusion and the cast shadow. 1 = none: the surfaces now carry a real Depth scale (GRANULARS.depthScale 0.8 / 0.6, a rim 10-15 px high), and the old 2 showed 45 degrees at a 34 degree limit; the repose slope is never exaggerated
 const GRAN_SLOPE_MAX = 1.5;  // shading only: the exaggerated slope is soft-clipped to this (56 degrees), so a pile at its real angle of repose does not go black
 const GRAN_AO_N    = 0.004;  // occlusion: height difference (long-side units) that counts as fully occluded (the solid uses 0.012 for its deeper fissures)
 const GRAN_SH_N    = 0.002;  // cast shadow: height above the light ray (long-side units) that counts as fully shadowed (the solid: 0.004)
-const GRAN = { rScale: 0.25, repose: true, shadeK: GRAN_SHADE_K, depthK: GRAN_DEPTH_K };   // test hooks. rScale: crater radius of a granular impact as a fraction of the liquid footprint it is taken from (makeGranular), so both can be measured. repose: false switches the relaxation off
+const GRAN = { rScale: 0.25, repose: true, shadeK: GRAN_SHADE_K, depthK: GRAN_DEPTH_K, depHalf: false };   // test hooks. depHalf: true makes the next buildFields use the RGBA16F deposit (the fallback). rScale: crater radius of a granular impact as a fraction of the liquid footprint it is taken from (makeGranular), so both can be measured. repose: false switches the relaxation off
 // A crater of radius R, depth `a` and feather start f0 (profile = 1 - smoothstep(f0 R, R, r)) holds  Vc = 2 pi a C(f0) R^2  with  C(f0) = f0 / 2 + 0.15 (1 - f0)^2.
 const craterC = (f0) => f0 / 2 + 0.15 * (1 - f0) * (1 - f0);
 
-// Impact deposit pass: one pass per substep while an event is building, deposit ping-pong -> ping-pong. The same telescoping increment as the
-// crater (FS_MASK): in a step a texel gains  tot x (P(age1) - P(age0))  with P = smoothstep of age / build time, so the whole event adds exactly  tot.
+// GRAIN COLOUR (display and deposit pass share it). A grain is never a blend: the colour of the bed at eroded depth z is ONE layer's colour, the nearest, and
+// across a layer boundary a per-grain hash decides which side a grain falls on (a dithered edge, not a crossfade: no purple between red and blue). The layer
+// boundary is at stack position fi + 0.5, the dither is GRAIN_DITHER wide (in stack-position units), centred on it: below it every grain is the upper layer,
+// above it the lower one. `iuv` is the image-space uv (v down), `h` the grain's hash in 0..1: the lower layer is picked when h < the dither ramp.
+const GRAIN_DITHER = 0.3;
+const GLSL_GRAIN = `
+vec3 grainLayerCol(vec2 iuv, float z, float h){
+  float p = clamp(stackPos(z), 0.0, uNImg);
+  float fi = floor(p);
+  float k = fi + ((h < smoothstep(0.5 - 0.5 * ${GRAIN_DITHER.toFixed(3)}, 0.5 + 0.5 * ${GRAIN_DITHER.toFixed(3)}, p - fi)) ? 1.0 : 0.0);
+  vec3 c = textureLod(uVar, vec3(iuv, min(k, uNImg - 1.0)), 0.0).rgb;
+  return k > uNImg - 0.5 ? WHITE : c;
+}
+`;
+
+// Impact deposit pass: one pass per substep while an event is building (it runs AFTER the substep's mask pass: it reads the mask before and after), deposit
+// ping-pong -> ping-pong. The same telescoping increment as the crater (FS_MASK): in a step a texel gains  tot x (P(age1) - P(age0)) x ratio  with P = smoothstep
+// of age / build time, so the whole event adds  tot x (the ratio's mean).
 //   rim      radius band [R, R + W), tot = rimPeak x 0.5 (1 - cos(2 pi (r - R) / W)); rimPeak makes the rim hold exactly the crater's volume (makeGranular)
-//   thrown   a strike's NTHROW grains, round heaps: tot = grainPeak x (1 - (d / rho)^2), a paraboloid (volume pi rho^2 / 2 per unit of peak)
-// COLOUR. Never a blend. The grains arriving at a rim texel come from the crater: the colour at the texel mirrored through the rim,
-// r' = R - (r - R) R / W along the same direction (a thrown grain: the crater centre); the colour of a texel (grainCol) is its deposit colour if it
-// holds deposit, else the stack colour at its eroded depth, PICKED (the nearest layer: no crossfade, so the colour is the picture's own, never the mean
-// of two layers). Top-grain rule applied to the event as a whole: the texel takes the incoming colour when the event's total there, tot, is at least
-// TOPGRAIN of the deposit it will hold (the deposit it had before the event plus every event now building), or when it was bare; otherwise it keeps
-// its colour (a small event does not repaint a big pile). Telescoping: the part of this event already in the texel is tot x P(age0).
+//   thrown   a strike's NTHROW grains, round heaps with a 3-lobed outline: tot = grainPeak x (1 - (d / rho(theta))^2), a paraboloid
+// VOLUME. ratio = (what the mask actually gained this substep at the mirror texel) / (what the crater formula would have added there, unclamped, summed over the
+// events building): the rim and the grains are fed by what the crater really removed, so the stack bottoming out at white, Relief wear (wearMul) and overlapping
+// events conserve by construction (a thrown grain: the ratio at the crater centre). The ratio is read at the texel where the crater's matching mass lies (MASS-MATCHED
+// MIRROR), at its centre, where the mask pass evaluates; the colour comes from the geometric mirror.
+// COLOUR. Never a blend, decided ONCE per event and texel, at the event's first substep, from the event's final geometry (the mask is still the one before the
+// event): the rim texel at radius r takes the colour of its MIRROR column (r' = R - (r - R) R / W along the same direction) at removed depth
+//     zc = mask_before(r') + Fc(f) Dbowl,   f = (r - R) / W,   Fc(f) = the fraction of the rim band's VOLUME outside f (rimOutside: the raised cosine x the annulus's r,
+//     closed form, counted from the outer edge in),   Dbowl = the crater increment inside the bowl (amount x 1 x wearMul, clamped at white: the flat part of the profile,
+//     so the feathered wall's shallow depth does not drive the colour)
+// so the outermost rim volume shows the top of the column and the innermost the bottom, each layer's share of the rim volume = its share of the removed column. The
+// picture position stays the geometric mirror r'; only the depth uses the bowl. Picked
+// from the stack (grainLayerCol: nearest layer, hash-dithered boundary, hash per texel); where the mirror texel already holds deposit, the deposit's colour
+// for the part of the cut that lies within it (zc - mask_before < the deposit height), else the stack colour. A thrown grain j: the crater-centre column at
+// mask_before(c) + u_j Dfinal(c), u_j from the event's seeded stream, one hash per grain: the discs are mixed colours in proportion to the layers removed at the
+// centre. Later substeps only add height. Top-grain rule applied to the event as a whole: the texel takes the incoming colour when the event's total there, tot, is
+// at least TOPGRAIN of the deposit it will hold (the deposit it had before plus every event now building), or when it was bare; otherwise it keeps its colour.
+// Cost: the grain loop is MAXS x NTHROW = 144 iterations; a texel farther than 3 R + the largest outline from a strike's centre skips it.
 const FS_DEP = `#version 300 es
 precision highp float; precision highp sampler2D; precision highp sampler2DArray;
 #define MAXD ${MAXD}
 #define NTHROW ${NTHROW}
-const float DEP_EPS = ${DEP_EPS.toFixed(4)}, TOPGRAIN = ${TOPGRAIN.toFixed(4)};
-uniform sampler2D uDep, uMask;
+const float DEP_EPS = ${DEP_EPS.toFixed(4)}, TOPGRAIN = ${TOPGRAIN.toFixed(4)}, RIP = ${THROW_RIP.toFixed(3)};
+const float THROW_REACH = ${(THROW_R1 * (1 + THROW_RIP)).toFixed(4)};
+uniform sampler2D uDep, uMask, uMaskB;   // the deposit; the mask after this substep's mask pass, and before it
 uniform sampler2DArray uVar;
-uniform vec4 uMa[MAXD];        // x, y (uv, v up), crater radius R (long-side units), active
-uniform vec4 uMb[MAXD];        // age at step start, age at step end, build time
+uniform vec4 uMa[MAXD];        // x, y (uv, v up), crater radius R (long-side units), crater depth at the centre (0 = not building)
+uniform vec4 uMb[MAXD];        // age at step start, age at step end, build time, feather start (fraction of R)
 uniform vec4 uGp[MAXD];        // rim peak (depth units), band width W (long-side units), index of the first thrown grain in uGd (-1 = none), thrown grain peak
-uniform vec4 uGd[${MAXS * NTHROW}];     // thrown grains: x, y (uv, v up), radius (long-side units)
+uniform vec4 uGd[${MAXS * NTHROW}];     // thrown grains: x, y (uv, v up), radius (long-side units), floor(u x 255) + phase / (2 pi)
 uniform vec2 uSz, uAsp;        // field size in texels; physical extent in long-side units
-uniform float uNImg;
-${GLSL_STACK}
+uniform float uMax;            // total thickness of the layers (the mask's bottom)
+uniform float uRatioOn;        // 0 = ratio 1 (the mask is only half-float: its increments are too coarse to divide)
 const vec3 WHITE = vec3(0.97, 0.935, 0.87);
-vec3 grainCol(vec2 uv){
-  ivec2 t = clamp(ivec2(uv * uSz), ivec2(0), ivec2(uSz) - 1);
+${GLSL_MASK_RELIEF}
+${GLSL_GRAIN}
+float hash12(vec2 p){ vec3 q = fract(vec3(p.xyx) * .1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+ivec2 texOf(vec2 uv){ return clamp(ivec2(uv * uSz), ivec2(0), ivec2(uSz) - 1); }
+// what the crater formula adds at texel t this substep, summed over the events building (unclamped, no wear), against what the mask really gained
+float craterRatio(ivec2 t, bool first){
+  vec2 pc = (vec2(t) + 0.5) / uSz * uAsp;
+  float an = 0.0;
+  for (int k = 0; k < MAXD; k++) {
+    vec4 a = uMa[k];
+    if (a.w <= 0.0) continue;
+    float rr = distance(pc, a.xy * uAsp);
+    if (rr >= a.z) continue;
+    vec4 b = uMb[k];
+    float q0 = smoothstep(0.0, 1.0, clamp(b.x / b.z, 0.0, 1.0)), q1 = smoothstep(0.0, 1.0, clamp(b.y / b.z, 0.0, 1.0));
+    an += a.w * (1.0 - smoothstep(b.w * a.z, a.z, rr)) * (q1 - q0);
+  }
+  float act = texelFetch(uMask, t, 0).x - texelFetch(uMaskB, t, 0).x;
+  if (an < 1e-6) return first ? 1.0 : 0.0;       // nothing to divide: no flow (but a first substep still gives the texel its colour, with a sliver of height)
+  return clamp(act / an, 0.0, 2.0);
+}
+// MASS-MATCHED MIRROR for the ratio. The ratio that feeds a rim texel is read where the crater's matching MASS lies, not at the geometric mirror: the rim ring at band
+// fraction f (counted from the outer edge in) and the crater disc inside radius x R hold the same fraction q of their totals when
+//   (rim mass outside f) / (rim mass) = (crater mass inside x R) / (crater mass),
+// so every sector of the rim is fed by exactly the crater mass of the same sector, whatever the ratio does across the crater (bottoming out at white, Relief wear):
+// volume is conserved by construction, not only where the ratio is flat. Both masses are closed forms (the crater: its raised-cosine-free smoothstep profile, the rim:
+// the raised cosine times its radius); x is found by bisection. f0 = the crater's feather start (fraction of R), k = W / R.
+float craterMass(float x, float a){
+  x = clamp(x, 0.0, 1.0);
+  if (x <= a) return 0.5 * x * x;
+  float t = (x - a) / (1.0 - a), t2 = t * t;
+  return 0.5 * a * a + (1.0 - a) * (a * (t - t2 * t + 0.5 * t2 * t2) + (1.0 - a) * (0.5 * t2 - 0.75 * t2 * t2 + 0.4 * t2 * t2 * t));
+}
+float rimMass(float f, float k){                 // integral from 0 to f of (1 - cos 2 pi s)(1 + k s) ds
+  float w = 6.28318531 * f, s = sin(w);
+  return (f - s / 6.28318531) + k * (0.5 * f * f - f * s / 6.28318531 - (cos(w) - 1.0) / 39.4784176);
+}
+float rimOutside(float f, float k){              // fraction of the rim band's volume that lies OUTSIDE band fraction f (counted from the outer edge in), r-weighting included
+  return 1.0 - rimMass(f, k) / rimMass(1.0, k);
+}
+float matchedX(float f, float a, float k){      // x = r'' / R for the rim ring at band fraction f
+  float q = (rimMass(1.0, k) - rimMass(f, k)) / rimMass(1.0, k);
+  float cm = q * craterMass(1.0, a), lo = 0.0, hi = 1.0;
+  for (int i = 0; i < 14; i++) { float mid = 0.5 * (lo + hi); if (craterMass(mid, a) < cm) lo = mid; else hi = mid; }
+  return 0.5 * (lo + hi);
+}
+// the colour of the grains the column at uv (v up) gives at depth s below the top of the cut (see COLOUR above)
+vec3 slabCol(vec2 uv, float s, float h){
+  ivec2 t = texOf(uv);
   vec4 dp = texelFetch(uDep, t, 0);
-  if (dp.x > 0.0) return dp.yzw;
-  float p = clamp(stackPos(texelFetch(uMask, t, 0).x), 0.0, uNImg);
-  float k = floor(p + 0.5);                                        // the layer this depth is nearest to
-  return k > uNImg - 0.5 ? WHITE : textureLod(uVar, vec3(uv.x, 1.0 - uv.y, min(k, uNImg - 1.0)), 0.0).rgb;
+  if (dp.x > DEP_EPS && s < dp.x) return dp.yzw;
+  return grainLayerCol(vec2(uv.x, 1.0 - uv.y), texelFetch(uMaskB, t, 0).x + s, h);
+}
+float cutDepth(vec2 uv, float ero, float feather){
+  float mb = texelFetch(uMaskB, texOf(uv), 0).x;
+  float D = ero * feather;
+  if (uRWear > 0.0) D *= wearMul(uv, mb);
+  return max(min(mb + D, max(uMax, mb)) - mb, 0.0);
 }
 out vec4 o;
 void main(){
   ivec2 ip = ivec2(gl_FragCoord.xy);
   vec4 d = texelFetch(uDep, ip, 0);
   vec2 pp = gl_FragCoord.xy / uSz * uAsp;
+  float hT = hash12(gl_FragCoord.xy + vec2(3.1, 7.7));
   float incSum = 0.0, totSum = 0.0, sofarSum = 0.0, bestTot = 0.0;
   vec3 bestCol = vec3(0.0);
   for (int i = 0; i < MAXD; i++) {
     vec4 a = uMa[i];
-    if (a.w < 0.5) continue;
+    if (a.w <= 0.0) continue;
     vec4 b = uMb[i], g = uGp[i];
     float p0 = smoothstep(0.0, 1.0, clamp(b.x / b.z, 0.0, 1.0)), p1 = smoothstep(0.0, 1.0, clamp(b.y / b.z, 0.0, 1.0));
     if (p1 <= p0) continue;
+    bool first = b.x <= 0.0;                                     // the event's first substep: the colour is decided now, once
     vec2 cc = a.xy * uAsp, dv = pp - cc;
     float r = length(dv), R = a.z, W = g.y;
     if (r > R && r < R + W) {
-      float tot = g.x * 0.5 * (1.0 - cos(6.28318531 * (r - R) / W));
+      float fr = (r - R) / W;
+      float tot = g.x * 0.5 * (1.0 - cos(6.28318531 * fr));
       if (tot * (p1 - p0) > 0.0) {
-        vec3 col = grainCol((cc + dv / r * (R - (r - R) * R / W)) / uAsp);
-        incSum += tot * (p1 - p0); totSum += tot; sofarSum += tot * p0;
-        if (tot > bestTot) { bestTot = tot; bestCol = col; }
+        float rm = R - (r - R) * R / W;                          // the mirror radius
+        vec2 uvM = (cc + dv / r * rm) / uAsp;
+        float inc = tot * (p1 - p0);
+        if (uRatioOn > 0.5) inc *= craterRatio(texOf((cc + dv / r * (matchedX(fr, b.w, W / R) * R)) / uAsp), first);   // fed by the crater mass of its sector (see MASS-MATCHED MIRROR)
+        if (inc > 0.0) {
+          incSum += inc; totSum += tot; sofarSum += tot * p0;
+          if (first && tot > bestTot) {
+            bestTot = tot;
+            bestCol = slabCol(uvM, rimOutside(fr, W / R) * cutDepth(uvM, a.w, 1.0), hT);   // depth by cumulative rim volume, over the bowl's full depth (feather 1: the flat part of the profile)
+          }
+        }
       }
     }
-    if (g.z >= 0.0) {
+    if (g.z >= 0.0 && r < 3.0 * R + THROW_REACH) {
       int base = int(g.z + 0.5);
       for (int j = 0; j < NTHROW; j++) {
         vec4 q = uGd[base + j];
-        float dd = distance(pp, q.xy * uAsp);
-        if (dd >= q.z) continue;
-        float tot = g.w * (1.0 - (dd / q.z) * (dd / q.z));          // a dome: the whole grain is lit and shaded as a heap
+        vec2 dg = pp - q.xy * uAsp;
+        float dl = length(dg);
+        if (dl >= q.z * (1.0 + RIP)) continue;
+        float ph = fract(q.w) * 6.28318531;
+        float rj = q.z * (1.0 + RIP * sin(3.0 * (dl > 1e-9 ? atan(dg.y, dg.x) : 0.0) + ph));
+        if (dl >= rj) continue;
+        float tot = g.w * (1.0 - (dl / rj) * (dl / rj));          // a dome: the whole grain is lit and shaded as a heap
         if (tot * (p1 - p0) <= 0.0) continue;
-        vec3 col = grainCol(a.xy);                                 // the colour at the crater centre
-        incSum += tot * (p1 - p0); totSum += tot; sofarSum += tot * p0;
-        if (tot > bestTot) { bestTot = tot; bestCol = col; }
+        float inc = tot * (p1 - p0);
+        if (uRatioOn > 0.5) inc *= craterRatio(texOf(a.xy), first);   // fed by the crater centre
+        if (inc <= 0.0) continue;
+        incSum += inc; totSum += tot; sofarSum += tot * p0;
+        if (first && tot > bestTot) {
+          bestTot = tot;
+          bestCol = slabCol(a.xy, floor(q.w) / 255.0 * cutDepth(a.xy, a.w, 1.0), hash12(q.xy * 977.0));   // one colour per grain
+        }
       }
     }
   }
   if (incSum > 0.0) {
     float before = max(d.x - sofarSum, 0.0);
-    if (before < DEP_EPS || bestTot >= TOPGRAIN * (before + totSum)) d.yzw = bestCol;
+    if (bestTot > 0.0 && (before < DEP_EPS || bestTot >= TOPGRAIN * (before + totSum))) d.yzw = bestCol;
     d.x += incSum;
   }
   o = d;
@@ -1460,7 +1563,8 @@ void main(){
 }`;
 
 // Granular display. Matte sand: no specular (a granular surface scatters, it does not mirror). Colour of a pixel: the deposit's colour where the texel holds
-// deposit (x > 0), else the stack colour at the shown eroded depth (stackCol + the wide layerMix crossfade, as the solid; no bevel, no lip). A thin deposit
+// deposit (x > 0), else the stack colour at the shown eroded depth, PICKED per grain (grainLayerCol: the nearest layer, a hash-dithered boundary; the liquid and
+// solid keep their layerMix crossfade, the sand has none: no bevel, no lip). A thin deposit
 // (0 .. 4 DEP_EPS) is scattered: the grain noise decides pixel by pixel, so it reads as loose grains, not a tint. Grain: a 2-octave value noise of period
 // grainSize px at 1024 (offset by the piece's map seed, constant in time) times +-grainContrast, plus a 1-px hash speckle at a third of it. Light: diffuse of the
 // Light block on the normal of H (corner gradients of the field, interpolated: smooth between texels), ambient from the block, the solid's occlusion and cast
@@ -1474,16 +1578,8 @@ in vec2 vUv; out vec4 outC;
 const float DEP_EPS = ${DEP_EPS.toFixed(4)}, SLOPE_MAX = ${GRAN_SLOPE_MAX.toFixed(2)}, AO_N = ${GRAN_AO_N.toFixed(4)}, SH_N = ${GRAN_SH_N.toFixed(4)};
 
 ${GLSL_COMMON}
+${GLSL_GRAIN}
 const vec2 AOD[6] = vec2[6](vec2(1.0, 0.0), vec2(0.5, 0.866), vec2(-0.5, 0.866), vec2(-1.0, 0.0), vec2(-0.5, -0.866), vec2(0.5, -0.866));
-vec3 stackCol(float pp, vec2 iuv){               // the solid's stackCol, wide crossfade only
-  pp = clamp(pp, 0.0, uNImg);
-  float fi = floor(pp), f = pp - fi, fb = min(fi + 1.0, uNImg);
-  vec3 a = texture(uVar, vec3(iuv, min(fi, uNImg - 1.0))).rgb;
-  vec3 b = texture(uVar, vec3(iuv, min(fb, uNImg - 1.0))).rgb;
-  a = (fi > uNImg - 0.5) ? WHITE : a;
-  b = (fb > uNImg - 0.5) ? WHITE : b;
-  return mix(a, b, layerMix(f, -1.0));
-}
 float Hd(ivec2 p){                                // surface height, depth units (deposit minus eroded depth)
   p = clamp(p, ivec2(0), ivec2(uGrid) - 1);
   return texelFetch(uDep, p, 0).x - texelFetch(uMask, p, 0).y;
@@ -1507,10 +1603,11 @@ void main(){
   vec2 iuv = vec2(uv.x, 1.0 - uv.y);
   ivec2 ft = clamp(ivec2(uv * uGrid), ivec2(0), ivec2(uGrid) - 1);
   vec4 dp = texelFetch(uDep, ft, 0);
-  float p0 = clamp(stackPos(maskAt(uv)), 0.0, uNImg);
-  vec3 bed = stackCol(p0, iuv);
+  float zb = maskAt(uv);
+  float p0 = clamp(stackPos(zb), 0.0, uNImg);
   // grain
   vec2 gp = up * (1024.0 / uGrainPx) + uGrOff;
+  vec3 bed = grainLayerCol(iuv, zb, hash12(floor(gp) + vec2(31.7, 5.3)));      // one layer's colour per grain (nearest, hash-dithered boundary), never a blend
   float gn = 0.65 * vnoise(gp) + 0.35 * vnoise(gp * 2.17 + vec2(17.1, 9.2));
   float speck = hash12(gl_FragCoord.xy);
   float cover = (dp.x > 0.0 && gn <= clamp(dp.x / (4.0 * DEP_EPS), 0.0, 1.0)) ? 1.0 : 0.0;
@@ -1580,7 +1677,7 @@ try {
   progDisplayS = makeProg(FS_DISPLAY_SOLID, ['uCrack', 'uFrag', 'uMask', 'uVar', 'uReflect', 'uRefract', 'uIdle', 'uTime', 'uCrackRes', 'uCrackD', 'uNImg', 'uGrid', 'uGridL', 'uAsp',
     'uFPow', 'uSpecPow', 'uBrushStr', 'uBrushDir', 'uBevel', 'uPitAmt', 'uDepthH', 'uTint', 'uColA', 'uColB', 'uColC', 'uColD', 'uColP', 'uCov', 'uSc',
     'uAlbT', 'uHgtT', 'uRghT', 'uHasAlb', 'uHasHgt', 'uHasRgh', 'uBump', 'uHgtSz'].concat(LIGHT_U, RELIEF_U));
-  progDep = makeProg(FS_DEP, ['uDep', 'uMask', 'uVar', 'uMa', 'uMb', 'uGp', 'uGd', 'uSz', 'uAsp', 'uNImg', 'uTh']);
+  progDep = makeProg(FS_DEP, ['uDep', 'uMask', 'uMaskB', 'uVar', 'uMa', 'uMb', 'uGp', 'uGd', 'uSz', 'uAsp', 'uMax', 'uRatioOn'].concat(MASK_RELIEF_U));
   progRepose = makeProg(FS_REPOSE, ['uDep', 'uMask', 'uSz', 'uS']);
   progDisplayG = makeProg(FS_DISPLAY_GRAN, ['uDep', 'uMask', 'uVar', 'uNImg', 'uGrid', 'uGridL', 'uAsp', 'uDepthH', 'uGrainPx', 'uGrCon', 'uGrOff', 'uShadeK'].concat(LIGHT_U, RELIEF_U));
 } catch (err) { fail(String(err.message || err)); return; }
@@ -1613,13 +1710,14 @@ function makePair(w, h, internal, type, filter) {
 // display shader, so no float-linear extension is needed). It has its own long side, `fieldRes` (FIELD_RES = 512): 512 only where textures
 // of 4096 exist and the 32-bit target is complete at that size, else the old 256. The probes run once; a later aspect change reuses their result.
 let state, mask, derived, crackMap, incMap, fragMap, dep;      // dep: the granular deposit pair (null where it cannot be made)
-let granularOk = false;
+let granularOk = false, dep32 = false, mask32 = false;   // dep32: the deposit pair is RGBA32F; mask32: the erosion mask is RGBA32F (the deposit pass divides its increments)
 let f32 = false, fieldRes = GRID, fieldsProbed = false;
 let simW = GRID, simH = GRID, fieldW = GRID, fieldH = GRID, crackW = CRACK_RES, crackH = CRACK_RES;
 const disposeTarget = (q) => { gl.deleteFramebuffer(q.fbo); gl.deleteTexture(q.tex); };
 function makeMaskPair(res) {
   const [w, h] = dimsFor(res);
-  if (f32) { const m = makePair(w, h, gl.RGBA32F, gl.FLOAT, gl.NEAREST); if (m.ok) return m; m.t.forEach(disposeTarget); }
+  if (f32) { const m = makePair(w, h, gl.RGBA32F, gl.FLOAT, gl.NEAREST); if (m.ok) { mask32 = true; return m; } m.t.forEach(disposeTarget); }
+  mask32 = false;
   return makePair(w, h, gl.RGBA16F, gl.HALF_FLOAT, gl.NEAREST);
 }
 function buildFields() {
@@ -1632,7 +1730,7 @@ function buildFields() {
   mask = null;
   if (!fieldsProbed && f32 && FIELD_RES > GRID && gl.getParameter(gl.MAX_TEXTURE_SIZE) >= 4096) {
     const [w, h] = dimsFor(FIELD_RES), m = makePair(w, h, gl.RGBA32F, gl.FLOAT, gl.NEAREST);
-    if (m.ok) { mask = m; fieldRes = FIELD_RES; } else m.t.forEach(disposeTarget);
+    if (m.ok) { mask = m; fieldRes = FIELD_RES; mask32 = true; } else m.t.forEach(disposeTarget);
   }
   if (!mask) mask = makeMaskPair(fieldRes);
   [fieldW, fieldH] = dimsFor(fieldRes);
@@ -1645,9 +1743,12 @@ function buildFields() {
   incMap = makeTarget(fieldW, fieldH, gl.RGBA8, gl.UNSIGNED_BYTE, gl.NEAREST);
   fragMap = makeTarget(crackW, crackH, gl.RGBA8, gl.UNSIGNED_BYTE, gl.LINEAR);   // spall plates: height, tilt, edge distance
   if (!crackMap.ok || !incMap.ok || !fragMap.ok) { fail('Crack framebuffers are incomplete on this device.'); return false; }
-  // Granular family: the deposit field (see GRANULAR), one RGBA16F ping-pong pair at the mask size, the only new target. A device that cannot render to
-  // it refuses the family (applySurface says so); everything else is unaffected.
-  dep = makePair(fieldW, fieldH, gl.RGBA16F, gl.HALF_FLOAT, gl.NEAREST);
+  // Granular family: the deposit field (see GRANULAR), one ping-pong pair at the mask size, the only new target. RGBA32F where the device renders to it (extF, as
+  // the wave state decides; the repose is then exact up to a height of 2^13), else RGBA16F (the old precision limit above 1 depth unit, see REPOSE_Q). A device that
+  // can make neither refuses the family (applySurface says so); everything else is unaffected. GRAN.depHalf forces the fallback (test hook).
+  dep = null; dep32 = false;
+  if (extF && !GRAN.depHalf) { dep = makePair(fieldW, fieldH, gl.RGBA32F, gl.FLOAT, gl.NEAREST); dep32 = dep.ok; if (!dep.ok) { dep.t.forEach(disposeTarget); dep = null; } }
+  if (!dep) { dep = makePair(fieldW, fieldH, gl.RGBA16F, gl.HALF_FLOAT, gl.NEAREST); }
   granularOk = dep.ok;
   if (!dep.ok) { dep.t.forEach(disposeTarget); dep = null; }
   fieldsProbed = true;
@@ -2112,12 +2213,14 @@ const SOLIDS = {
 //   repose        angle of repose, degrees: the steepest slope a pile of deposit keeps (the Repose angle slider's default)
 //   grain         grain size: period of the grain noise in pixels at a 1024 canvas (Grain size slider's default)
 //   contrast      brightness modulation of the grain, +- (Grain contrast slider's default)
+//   depthScale    the Depth scale slider's default on this surface (the liquids and solids keep 0.3): sand is meant to have relief, a default drop's rim is ~10-15 px
+//                 high at 0.8 (1-2 px at 0.3). Reset on surface select, like the three sliders above; leaving a granular surface puts the slider back to 0.3
 //   tone          ground colour of the procedural placeholder layers when there is no image (display-referred 0..255): sand = SURFACE_TONE lifted 10 % and
 //                 warmed (x 1.10, blue pulled down), dust = SURFACE_TONE a little lighter (x 1.06)
 //   reflect, refract, idle, time   the four override sliders' defaults; a granular surface shows none of the first three (matte, no refraction, no ripple)
 const GRANULARS = {
-  sand: { name: 'Sand', family: 'granular', repose: 34, grain: 2.0, contrast: 0.18, tone: [154, 152, 132], reflect: 0, refract: 0, idle: 0, time: 1 },
-  dust: { name: 'Dust', family: 'granular', repose: 24, grain: 1.2, contrast: 0.10, tone: [148, 153, 159], reflect: 0, refract: 0, idle: 0, time: 1 }
+  sand: { name: 'Sand', family: 'granular', repose: 34, grain: 2.0, contrast: 0.18, depthScale: 0.8, tone: [154, 152, 132], reflect: 0, refract: 0, idle: 0, time: 1 },
+  dust: { name: 'Dust', family: 'granular', repose: 24, grain: 1.2, contrast: 0.10, depthScale: 0.6, tone: [148, 153, 159], reflect: 0, refract: 0, idle: 0, time: 1 }
 };
 const SURFACE_ALIAS = { 'rusted-iron': 'rust', iron: 'rust', 'tarnished-bronze': 'bronze', 'molten-gold': 'gold' };
 
@@ -2806,22 +2909,29 @@ function maskSolidPass() {
                       depth ero = the drop's (min(1, max(0.05, 0.5 x energy / 0.5)))
               strike: R = the liquid strike's swell footprint (makeStrike Rrev: 1.7 x the swell sigma, from area and Energy), depth = 0.5 x the drop's
               both radii x GRAN.rScale (see below)
-     rim      band [R, R + W], W = 0.5 R (drop) / 1.0 R (strike), raised cosine rimP x 0.5 (1 - cos(2 pi (r - R) / W)); built over the same T as the crater.
+     rim      band [R, R + W], W = 0.5 R (drop) / 1.0 R (strike), raised cosine rimP x 0.5 (1 - cos(2 pi (r - R) / W)); built over the same T as the crater, each substep
+              scaled by what the mask really gained at the mirror texel over what the crater formula would have added (FS_DEP: volume follows the bottom of the stack
+              and Relief wear); its colour comes from the removed grains by volume (FS_DEP).
      VOLUME. Crater (radial integral of ero x profile):   Vc = 2 pi ero C(f0) R^2,  C(f0) = f0 / 2 + 0.15 (1 - f0)^2   (f0 = feather start)
              Rim (radial integral):                        Vr = pi rimP W (R + W / 2)                                        (per unit of peak: pi W (R + W / 2))
-             Thrown grain (strike), a paraboloid of radius rho and peak grainPeak = rimP / 2:   (pi rho^2 / 2) grainPeak
-             rimP = Vc / (pi W (R + W / 2) + 0.5 x sum over the grains of pi rho^2 / 2), so rim + grains hold exactly the crater's volume (verified on
+             Thrown grain (strike), a paraboloid of mean radius rho and peak grainPeak = rimP / 2, outline rho (1 + THROW_RIP sin(3 theta + phase)):
+                                                           (pi rho^2 / 2) (1 + THROW_RIP^2 / 2) grainPeak
+             rimP = Vc / (pi W (R + W / 2) + 0.5 x sum over the grains of the grain volume per unit of peak), so rim + grains hold exactly the crater's volume (verified on
              the fields in the pass-3a tests). Depth units are the same for the crater and the deposit, so a rim of 0.3 beside a crater of 0.3 is the same step.
-     thrown   NTHROW discs, radius 0.015 .. 0.03 (long-side units), at 1.5 R .. 3 R from the centre, angle / radius / size from the event's seeded stream,
+             Grains that leave the canvas are gone by design: volume thrown beyond the canvas is lost (the rim and the discs of an impact near the edge).
+     thrown   NTHROW discs, radius THROW_R0 .. THROW_R1 (4 .. 12 px at 1024), at 1.5 R .. 3 R from the centre, angle / radius / size from the event's seeded stream,
               mulberry32(hash3(event index, x, y)) (the index counts the granular events of the piece; taps and lists alike, so the same piece gives the
-              same grains). A disc that would fall off the canvas is redrawn (up to 8 times) so the volume stays on the surface.
+              same grains); the stream then gives each disc its depth fraction u and its outline phase (drawn after the positions, so those did not move). A disc that would
+              fall off the canvas is redrawn (up to 8 times) so the volume stays on the surface. MAXS strikes can carry discs at once; a later one throws none (its rim holds
+              their share, and the HUD counts the discs dropped).
    GRAN.rScale. The brief reads "R from the liquid drop's / strike's footprint": 0.34 for a default drop and 0.54 for a strike of area 0.5, so the rim
    (R .. 1.5 R, R .. 2 R) and the thrown grains (to 3 R) lie mostly beyond the canvas edge of a centred impact. GRAN.rScale scales both radii (default
    0.25: drop R 0.085, strike R 0.136, grains inside the canvas); 1 is the literal reading. Not saved (a build constant, a test hook).
    ---------------------------------------------------------------------- */
 const GRAN_C = 1e9;
-let granSeq = 0, depDirty = false, granMapSeed = 1, granOff = [0, 0];
-const aGp = new Float32Array(MAXD * 4), aGd = new Float32Array(MAXS * NTHROW * 4);
+let granSeq = 0, depEver = false, reposeUntil = -1, discsDropped = 0, granMapSeed = 1, granOff = [0, 0];   // depEver: some deposit pass has run; reposeUntil: the last substep (exclusive) the repose passes run
+const aGp = new Float32Array(MAXD * 4), aGd = new Float32Array(MAXS * NTHROW * 4), gMa = new Float32Array(MAXD * 4), gMb = new Float32Array(MAXD * 4);
+const buildWindow = (d) => (stepCount - d.t0) * DT < d.dur + d.Rrev / d.c + 0.1;            // an event is "building" (mask pass, deposit pass) for this long
 function makeGranular(ev) {
   const strike = ev.type === 'strike', seq = granSeq++;
   const base = makeDrop(ev);
@@ -2829,52 +2939,63 @@ function makeGranular(ev) {
   const W = (strike ? 1.0 : 0.5) * R, f0 = base.f0, T = Math.max(0.04, params.attack + ev.duration);
   const x = ev.x, y = 1 - ev.y, ox = x * ASPX, oy = y * ASPY;
   const Vc = 2 * Math.PI * ero * craterC(f0) * R * R, Vr1 = Math.PI * W * (R + 0.5 * W);
-  let rimP, grainPeak = 0, thrown = null;
+  let rimP, grainPeak = 0, thrown = null, dropped = 0;
   if (strike) {
     const rnd = mulberry32(hash3(seq, Math.round(ox * 4096), Math.round(oy * 4096)));
     let Vd1 = 0;
     thrown = [];
-    for (let j = 0; j < NTHROW; j++) {
+    for (let j = 0; j < NTHROW; j++) {                       // positions and sizes: the same draws, in the same order, as before
       let gx = 0, gy = 0, rho = 0;
       for (let tries = 0; tries < 8; tries++) {
         const ang = rnd() * 2 * Math.PI, rad = R * (1.5 + 1.5 * rnd());
-        rho = 0.015 + 0.015 * rnd();
+        rho = THROW_R0 + (THROW_R1 - THROW_R0) * rnd();
         gx = ox + rad * Math.cos(ang); gy = oy + rad * Math.sin(ang);
-        if (gx >= rho && gx <= ASPX - rho && gy >= rho && gy <= ASPY - rho) break;
+        const reach = rho * (1 + THROW_RIP);
+        if (gx >= reach && gx <= ASPX - reach && gy >= reach && gy <= ASPY - reach) break;
       }
       thrown.push({ x: gx / ASPX, y: gy / ASPY, rho });
-      Vd1 += 0.5 * Math.PI * rho * rho;
+      Vd1 += 0.5 * Math.PI * rho * rho * (1 + 0.5 * THROW_RIP * THROW_RIP);
     }
-    rimP = Vc / (Vr1 + 0.5 * Vd1);
-    grainPeak = 0.5 * rimP;
+    for (let j = 0; j < NTHROW; j++) thrown[j].u = rnd();                                // then each disc's depth fraction ...
+    for (let j = 0; j < NTHROW; j++) thrown[j].phase = rnd() * 2 * Math.PI;              // ... and outline phase (appended to the stream)
+    if (drops.filter((d) => d.thrown && buildWindow(d)).length >= MAXS) { thrown = null; dropped = NTHROW; discsDropped += dropped; }   // no free slot: no discs, counted
+    if (thrown) { rimP = Vc / (Vr1 + 0.5 * Vd1); grainPeak = 0.5 * rimP; } else rimP = Vc / Vr1;
   } else rimP = Vc / Vr1;
-  return { x, y, t0: stepCount, amp: 0, lam: 1, sig: 0, att: T, Rrev: R, dur: T, c: GRAN_C, ero, f0, rimP, rimW: W, thrown, grainPeak, strike, Vc };
+  return { x, y, t0: stepCount, amp: 0, lam: 1, sig: 0, att: T, Rrev: R, dur: T, c: GRAN_C, ero, f0, rimP, rimW: W, thrown, grainPeak, strike, Vc, dropped };
 }
-// Pack the rim / thrown-grain uniforms of the events that fillDrops marked active (same test); returns whether any event is building.
+// Pack the rim / thrown-grain uniforms of the events that fillDrops marked active (same test); returns whether any event is building. The deposit pass reads its
+// own packing of the crater (x, y, R, depth | ages, build time, feather start) so it can recompute what the mask pass added.
 function fillGranular() {
-  aGp.fill(0); aGd.fill(0);
+  aGp.fill(0); aGd.fill(0); gMa.fill(0); gMb.fill(0);
   let ns = 0, building = false;
   for (let i = 0; i < drops.length; i++) {
     const d = drops[i];
-    if (!((stepCount - d.t0) * DT < d.dur + d.Rrev / d.c + 0.1)) continue;
+    if (!buildWindow(d)) continue;
     building = true;
+    gMa.set([aMa[4 * i], aMa[4 * i + 1], aMa[4 * i + 2], d.ero], 4 * i);
+    gMb.set([aMb[4 * i], aMb[4 * i + 1], aMb[4 * i + 2], d.f0], 4 * i);
     let b = -1;
-    if (d.thrown && ns < MAXS) { b = ns * NTHROW; d.thrown.forEach((q, j) => aGd.set([q.x, q.y, q.rho, 0], (b + j) * 4)); ns++; }
+    if (d.thrown && ns < MAXS) { b = ns * NTHROW; d.thrown.forEach((q, j) => aGd.set([q.x, q.y, q.rho, Math.min(255, Math.floor(q.u * 255)) + Math.min(0.999, q.phase / (2 * Math.PI))], (b + j) * 4)); ns++; }
     aGp.set([d.rimP, d.rimW, b, d.grainPeak], i * 4);
   }
   return building;
 }
+// After the substep's mask pass (mask.cur = after, mask.nxt = before): the deposit pass needs both.
 function depPass() {
   const P = pass(progDep, dep.nxt);
   bindTex(0, gl.TEXTURE_2D, dep.cur.tex, P.u.uDep);
   bindTex(1, gl.TEXTURE_2D, mask.cur.tex, P.u.uMask);
-  bindTex(2, gl.TEXTURE_2D_ARRAY, varTex, P.u.uVar);
-  gl.uniform4fv(P.u.uMa, aMa); gl.uniform4fv(P.u.uMb, aMb); gl.uniform4fv(P.u.uGp, aGp); gl.uniform4fv(P.u.uGd, aGd);
-  gl.uniform2f(P.u.uSz, fieldW, fieldH); gl.uniform2f(P.u.uAsp, ASPX, ASPY); gl.uniform1f(P.u.uNImg, variantN);
-  gl.uniform4f(P.u.uTh, params.th0, params.th1, params.th2, params.th3);
+  bindTex(2, gl.TEXTURE_2D, mask.nxt.tex, P.u.uMaskB);
+  bindTex(3, gl.TEXTURE_2D_ARRAY, varTex, P.u.uVar);
+  gl.uniform4fv(P.u.uMa, gMa); gl.uniform4fv(P.u.uMb, gMb); gl.uniform4fv(P.u.uGp, aGp); gl.uniform4fv(P.u.uGd, aGd);
+  gl.uniform2f(P.u.uSz, fieldW, fieldH); gl.uniform2f(P.u.uAsp, ASPX, ASPY);
+  gl.uniform1f(P.u.uMax, maxDepth()); gl.uniform1f(P.u.uRatioOn, mask32 ? 1 : 0);
+  setReliefMask(P, 4, 5);                                 // thicknesses, layer count and Relief wear (the cut's depth uses wearMul)
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   dep.flip();
 }
+// A slider that changes the slope limit (Repose angle, Depth scale) lets an existing pile settle again: the repose passes run for REPOSE_TAIL s more.
+function wakeRepose() { if (depEver) reposeUntil = Math.max(reposeUntil, stepCount + Math.round(REPOSE_TAIL / DT)); }
 // Slope limit in depth units per texel: tan(angle) x (texel length / depth length). The real angle of the rendered heightfield (see GRANULAR for the units).
 // Depth scale 0 would make every slope infinite; it is held at 0.01 (a limit of ~10 depth units per texel: nothing slides).
 const reposeLimit = () => Math.tan(params.reposeAngle / DEG) / (fieldRes * Math.max(params.dscale, 0.01) * DEPTH_UNIT * GRAN.depthK);
@@ -2912,9 +3033,9 @@ function substep() {
   }
   if (family === 'granular') {                         // no wave simulation: the crater and its rim build, then the deposit slides to its angle of repose
     fillDrops();
-    if (fillGranular()) { depPass(); depDirty = true; }
-    maskPass();
-    if (depDirty && GRAN.repose) for (let i = 0; i < REPOSE_ITER; i++) reposePass();
+    maskPass();                                        // the crater first: the deposit pass reads the mask before and after it
+    if (fillGranular()) { depPass(); depEver = true; reposeUntil = stepCount + 1 + Math.round(REPOSE_TAIL / DT); }
+    if (stepCount < reposeUntil && GRAN.repose) for (let i = 0; i < REPOSE_ITER; i++) reposePass();   // while an event builds and for REPOSE_TAIL s after the last one
     stepCount++;
     return;
   }
@@ -2936,7 +3057,7 @@ function restart() {
   mask.t.forEach((t) => clearTarget(t, 0, 0, 0, 1));
   clearTarget(derived, 0, 0, 0, 1);
   if (dep) dep.t.forEach((t) => clearTarget(t, 0, 0, 0, 0));
-  granSeq = 0; depDirty = false; granMapSeed = seedVal();
+  granSeq = 0; depEver = false; reposeUntil = -1; discsDropped = 0; granMapSeed = seedVal();
   { const r = mulberry32(((granMapSeed | 0) * 2654435761 + 0x6A1) >>> 0); granOff = [r() * 500, r() * 500]; }   // the grain noise is offset by the piece's map seed, frozen here
   clearTarget(crackMap, 0, 0, 0, 0); clearTarget(incMap, 0, 0, 0, 1); clearTarget(fragMap, 0, 0, 0, 0);
   cdrops = []; dropSeq = 0; occ.fill(0); occStamp.fill(0); frags = []; fragBorn = 0; testDrop = testDropSpec ? { t: testDropSpec } : null;
@@ -3097,12 +3218,12 @@ function frame(now) {
     if (acc >= DT) acc = 0;     // backlog: slow down rather than spiral
   }
   render();
-  const key = Math.floor(stepCount / 6) + ':' + evCount + ':' + fragBorn + ':' + ignoredN;
+  const key = Math.floor(stepCount / 6) + ':' + evCount + ':' + fragBorn + ':' + ignoredN + ':' + discsDropped;
   if (key !== hudKey) {
     hudKey = key;
     if (family === 'solid' && fragBorn !== jsonFrag) { jsonFrag = fragBorn; syncValues(); }
     $('hud').textContent = (stepCount * DT).toFixed(1) + ' s · ' + evCount + ' drops' + ((manualN + tapN) ? ' (' + (manualN + tapN) + ' manual)' : '') +
-      (ignoredN ? ' · ' + ignoredN + ' ignored (pass 4/5)' : '') +
+      (ignoredN ? ' · ' + ignoredN + ' ignored (pass 4/5)' : '') + (discsDropped ? ' · discs dropped: ' + discsDropped : '') +
       (randomOn ? ' · random seed ' + randomSeed + ' · ' + randomLabel() : (randomDone ? ' · random done' : ''));
     $('rLeft').textContent = randomLabel();
     $('bRand').setAttribute('aria-pressed', randomOn ? 'true' : 'false');
@@ -3149,7 +3270,7 @@ function readout() {
     o.damping = null;
   } else if (family === 'granular') {
     $('wnote').textContent = 'no wave simulation · crater radius from Wavelength and Ring count (as a drop\u2019s footprint on a liquid) x ' + GRAN.rScale + ' · build time Attack + duration · repose limit ' +
-      reposeLimit().toFixed(3) + ' depth units per texel';
+      reposeLimit().toFixed(3) + ' depth units per texel \u00b7 volume thrown beyond the canvas is lost';
     o.damping = null;
   } else {
     const st = simState();
@@ -3169,15 +3290,15 @@ function readout() {
     layerBump: params.layerBump, reliefWear: params.reliefWear, reliefCrack: params.reliefCrack,
     layerHeights: lhFlags.map((f) => f > 0),     // which layers carry a height map in use (the maps themselves are not saved)
     // granular (A9): ONE block, split by when a key takes effect. map = frozen at piece start (pass 3b adds the cell-map parameters), live = uniforms, change at any time.
-    // map.seed IS the piece seed above (the same number, read from the same field), not a second state.
-    granular: { map: { seed: seedVal() }, live: { reposeAngle: params.reposeAngle, grainSize: params.grainSize, grainContrast: params.grainContrast } },
+    // map.seed is the seed the piece was STARTED with (frozen at restart: granMapSeed); `seed` above is the field's current value, which a restart or Random 45 s takes up.
+    granular: { map: { seed: granMapSeed }, live: { reposeAngle: params.reposeAngle, grainSize: params.grainSize, grainContrast: params.grainContrast } },
     textures: { albedo: slots.albedo.has, height: slots.height.has, roughness: slots.roughness.has, brushing: slots.brushing.has, hdri: slots.hdri.has } });   // which slots are filled, not the pixels
   return o;
 }
 function syncValues() { $('json').value = JSON.stringify(readout(), null, 1); }
 Object.keys(ids).forEach((k) => {
   const s = $('s' + ids[k]), o = $('o' + ids[k]);
-  const upd = () => { params[k] = parseFloat(s.value); o.textContent = fmt[k](params[k]); syncValues(); };
+  const upd = () => { params[k] = parseFloat(s.value); o.textContent = fmt[k](params[k]); if (k === 'reposeAngle' || k === 'dscale') wakeRepose(); syncValues(); };
   s.addEventListener('input', upd); upd();
 });
 // Light block. Azimuth / elevation / ambient start from the active surface's own light (surfaceLight) and stay where the artist
@@ -3217,7 +3338,8 @@ function advText() {
             'repose angle  ' + G.repose + ' deg (slope limit ' + reposeLimit().toFixed(3) + ' depth units per texel at the current Depth scale)',
             'grain         ' + G.grain + ' px at 1024, contrast ' + G.contrast, 'ground tone   ' + G.tone.join(', '),
             'crater        radius = the liquid footprint x ' + GRAN.rScale + ' (drop 0.34, strike 0.54 at area 0.5, default Energy), depth = the liquid\u2019s (strike x 0.5)',
-            'rim           drop W = 0.5 R, strike W = R; rim volume = crater volume', 'thrown grains ' + NTHROW + ' per strike, radius 0.015 .. 0.03, at 1.5 .. 3 R',
+            'rim           drop W = 0.5 R, strike W = R; rim volume = crater volume; its grains carry the colours of the layers removed, by volume', 'thrown grains ' + NTHROW + ' per strike, radius ' + THROW_R0 + ' .. ' + THROW_R1 + ', at 1.5 .. 3 R, mixed colours; ' + MAXS + ' strikes at once',
+            'depth scale   ' + G.depthScale + ' by default', 'canvas edge    volume thrown beyond the canvas is lost',
             'repose        ' + REPOSE_ITER + ' iterations per step, K ' + REPOSE_K + ', top-grain ' + TOPGRAIN,
             'defaults      time ' + G.time].join('\n');
   }
@@ -3235,12 +3357,13 @@ function applySurface(key) {
   const isSolid = !!SOLIDS[key], isGran = !!GRANULARS[key];
   if (!isSolid && !isGran && !LIQUIDS[key]) return false;
   if (isGran && !granularOk) { $('fnote').textContent = 'Granular surfaces need a half-float render target (RGBA16F) for the deposit field, which this device cannot make: the surface was not changed.'; return false; }
-  const fam = isSolid ? 'solid' : isGran ? 'granular' : 'liquid', changed = fam !== family;
+  const fam = isSolid ? 'solid' : isGran ? 'granular' : 'liquid', changed = fam !== family, prevFam = family;
   if (isSolid) { solid = SOLIDS[key]; solidKey = key; } else if (isGran) { granular = GRANULARS[key]; granularKey = key; } else { liquidKey = key; liquid = LIQUIDS[key]; }
   family = fam;
   const d = isSolid ? solid : isGran ? granular : liquid;
   const set = { reflect: isGran ? d.reflect : d.fresnelBase, refract: d.refract, idle: d.idle, time: d.time };
-  if (isGran) Object.assign(set, { reposeAngle: d.repose, grainSize: d.grain, grainContrast: d.contrast });   // the granular sliders go back to the surface's own numbers
+  if (isGran) Object.assign(set, { reposeAngle: d.repose, grainSize: d.grain, grainContrast: d.contrast, dscale: d.depthScale });   // the granular sliders (and Depth scale) go back to the surface's own numbers
+  else if (prevFam === 'granular') set.dscale = ARTIST.dscale;                                                                        // leaving sand or dust: the liquids' and solids' own Depth scale
   Object.keys(set).forEach((k) => { const s = $('s' + ids[k]); s.value = set[k]; s.dispatchEvent(new Event('input')); });
   followSurfaceLight(d);
   // ground colour of the procedural layers (and the letterbox): the granular surfaces have their own tone; liquids and solids use SURFACE_TONE, so a switch between them changes nothing
@@ -3447,8 +3570,8 @@ const IMPACT_NOTE = {
   flow: 'Flow: pass 5. Selectable, but events of this type are stored and ignored for now.'
 };
 const IMPACT_NOTE_GRAN = {     // granular surfaces (the other types are inert there too)
-  drop: 'Drop on sand: a crater (radius from Wavelength and Ring count, depth from Energy) whose grains, with their colours, pile on a rim half a radius wide. It reads Energy only.',
-  strike: 'Strike on sand: reads Energy and Area. A wider, shallower crater (half the depth), a rim one crater radius wide, and 12 thrown grains; rim and grains together hold the crater\u2019s volume.'
+  drop: 'Drop on sand: a crater (radius from Wavelength and Ring count, depth and radius from Energy: \u221a(E/0.5)) whose grains, with their colours, pile on a rim half a radius wide. It reads Energy only.',
+  strike: 'Strike on sand: reads Energy and Area. A wider, shallower crater (half the depth), a rim one crater radius wide, and 24 thrown grains of mixed colours; rim and grains together hold the crater\u2019s volume (what falls beyond the canvas is lost).'
 };
 const IMP_UI = { area: ['sArea', 'oArea', (v) => v.toFixed(2)], duration: ['sDur', 'oDur', (v) => v.toFixed(2) + ' s'], dir: ['sDir', 'oDir', (v) => Math.round(v) + '°'] };
 function showImpact() {
@@ -3504,6 +3627,11 @@ const SET_NAMES = { size: 'dropSize', attack: 'attack', wave: 'wavelength', ring
                     layerBump: 'layerBump', reliefWear: 'reliefWear', reliefCrack: 'reliefCrack' };
 // keys added after the first settings files: a file without them (older, same version 1: the format only gained keys) loads them at their defaults
 const SET_ADDED = ['layerBump', 'reliefWear', 'reliefCrack'];
+// every top-level key a settings file or a patch can hold (the readout's keys, which depend on the family, plus the file's own)
+const SET_KEYS = ['version', 'surface', 'surfaceKey', 'family', 'liquid', 'autoEvents', 'randomMode', 'seed', 'impact', 'dropSize', 'attack', 'wavelength', 'ringCount', 'waveSpeed',
+  'crackGrowthSpeed', 'fragments', 'damping', 'waveSpeedEffective', 'spread', 'revealLag', 'wearSoftness', 'edgeSharpness', 'edgeWidth', 'edgeHeight', 'thickness', 'depthScale',
+  'variants', 'reflect', 'refract', 'idle', 'timeScale', 'light', 'aspect', 'fit', 'render', 'bumpStrength', 'brushTile', 'layerBump', 'reliefWear', 'reliefCrack', 'layerHeights',
+  'granular', 'textures', 'layers'];
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
 function setSlider(k, v) {                                   // a slider by key, through its own input handler; the value is clamped to the slider's range
   if (!isNum(v)) return false;
@@ -3526,7 +3654,7 @@ function surfaceKeyFor(o) {
 //   surface / surfaceKey                          yes (a surface change resets the four override sliders, follows the surface's light and, across families, rebuilds)
 //   aspect                                        yes (the fields are rebuilt at the new shape)
 //   fit                                           yes (the layer images are re-fitted)
-//   seed                                          yes (Random 45 s seed; the granular map seed)
+//   seed                                          yes (Random 45 s seed; the granular map seed; granular.map.seed wins when both are given and differ)
 //   granular.map.* (seed; pass 3b: the cell map)  yes (frozen at piece start)
 //   every slider (dropSize .. reliefCrack), thickness, light, render, impact, autoEvents, granular.live.*   no (uniforms / the next event: they change live)
 function applySettings(o, fname, patch) {
@@ -3586,15 +3714,23 @@ function applySettings(o, fname, patch) {
     if (typeof R.lock === 'boolean') renderSet.lock = R.lock;
     showRender();
   } else if (o.render !== undefined) skipped.push('render');
-  if (isNum(o.seed)) { $('nSeed').value = String(clamp(Math.round(o.seed), 0, 999999)); need('seed'); }
+  // seed: the field's value, restarts the piece. granular.map.seed is the seed the piece was started with; it is the same number's frozen copy, and when both are given it wins
+  if (mapSeed !== undefined) {
+    $('nSeed').value = String(clamp(Math.round(mapSeed), 0, 999999)); need('granular.map');
+    if (isNum(o.seed) && Math.round(o.seed) !== Math.round(mapSeed)) notes.push('seed ' + o.seed + ' and granular.map.seed ' + mapSeed + ' both given: granular.map.seed wins.');
+    else if (o.seed !== undefined && !isNum(o.seed)) skipped.push('seed');
+  } else if (isNum(o.seed)) { $('nSeed').value = String(clamp(Math.round(o.seed), 0, 999999)); need('seed'); }
   else if (o.seed !== undefined) skipped.push('seed');
-  else if (mapSeed !== undefined) { $('nSeed').value = String(clamp(Math.round(mapSeed), 0, 999999)); need('granular.map'); }   // map.seed is the piece seed: a file that holds only the map block sets it
   const I = o.impact;
   if (I && typeof I === 'object') {
     if (IMPACT_TYPES.indexOf(I.type) >= 0) setImpactType(I.type, false); else skipped.push('impact.type');
     [['area', 0, 1], ['duration', 0, 3], ['dir', 0, 360]].forEach(([k, lo, hi]) => { if (I[k] === undefined) return; if (isNum(I[k])) impact[k] = clamp(I[k], lo, hi); else skipped.push('impact.' + k); });
     showImpact();
   } else if (o.impact !== undefined) skipped.push('impact');
+  if (patch) {                     // a patch is hand-written: a misspelt or unknown top-level key is named, never silently dropped
+    const ign = Object.keys(o).filter((k) => SET_KEYS.indexOf(k) < 0);
+    if (ign.length) notes.push('ignored: ' + ign.join(', ') + '.');
+  }
   const restarted = !patch || why.length > 0;
   if (restarted) { restart(); playing = true; $('bPlay').textContent = 'Pause'; }
   if (typeof o.autoEvents === 'boolean') setAuto(o.autoEvents);
@@ -3662,6 +3798,11 @@ window.XANADU = {
     return a;
   },
   get granularOk() { return granularOk; },
+  get depFormat() { return dep ? (dep32 ? 'RGBA32F' : 'RGBA16F') : 'none'; },                      // test hooks: the formats the deposit and the erosion mask were made in
+  get maskFormat() { return mask32 ? 'RGBA32F' : 'RGBA16F'; },
+  get discsDropped() { return discsDropped; },
+  get reposeUntil() { return reposeUntil; },
+  get depProg() { return progDep; },                                                                  // test hook: the deposit program (uniform / unit counts)
   GRAN, GRANULARS,
   get stepCount() { return stepCount; },                                                              // test hook: substeps run in this piece
   get granularEvents() { return drops.slice(); },                                                    // test hook: the event records (R, W, ero, f0, rimP, Vc, thrown ...)
