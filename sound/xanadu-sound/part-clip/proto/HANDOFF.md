@@ -8,7 +8,7 @@ For the next chat. Written 1 Nov 2026 by the advisor at the end of a two-day ses
 2. Say: "Read sound/xanadu-sound/part-clip/proto/HANDOFF.md and continue."
 3. Working language Turkish; system files English. Address: Üstadım.
 
-## What exists (all pushed to `main`, last commit of this session is listed at the bottom)
+## What exists (all pushed to `main`, last commit of this session: `d891ec6`, 1 Nov 2026)
 
 | Path | What | State |
 |---|---|---|
