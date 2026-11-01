@@ -1,6 +1,6 @@
 # Pärt clip prototype — refinement plan v2
 
-1 Nov 2026 · for approval by Bekir before any work starts · prototype: `part-clip/proto/index.html` (WebGL2, one file)
+1 Nov 2026 · v2.1 (09:10) · approved structure: three axes (medium / layer / impact), never mixed · prototype: `part-clip/proto/index.html` (WebGL2, one file)
 
 Decision context: we stay in WebGL for now; Blender only if the 1080p test render reads as a "screen effect" (§10 of the project brief, advisor's view 1 Nov). This plan refines the prototype toward a renderable clip for *Für Alina* (Malter/ECM, 10:47, piano only).
 
@@ -16,7 +16,10 @@ Marks: [☀️] certain · [🌤️] likely, may need a second pass · [☁️] 
 | A2 | **Any aspect ratio, resolution, size; video limits set accordingly** | Canvas becomes W×H (presets 16:9, 9:16, 1:1, 4:5, 21:9, custom). Simulation fields become rectangular at the same aspect. Profile images are fitted by a chosen rule (cover / contain / stretch, with offset). **Render settings** panel: output width/height (up to 3840×2160 — [🌤️] GPU-dependent), fps (24/25/30/60), duration (free; 10:47 preset), bit depth. These settings go into the JSON readout and into the offline render job (B2). | [☀️] canvas; [🌤️] 4K on iPad: display stays ≤ 2K, 4K is for offline render only |
 | A3 | **TIFF and PNG, not only JPEG** | PNG: native [☀️]. TIFF: browsers do not decode TIFF; add a small inline decoder (uncompressed / LZW / 8- and 16-bit, no external library) — [🌤️] covers Photoshop's default TIFF exports; exotic TIFFs (ZIP, 32-bit float, layered) will be refused with a message. 16-bit PNG/TIFF are read at 16-bit and uploaded as half-float textures. | [🌤️] |
 | A4 | **Metal surface works with a height map, bump-like** | Each surface gets a **texture set**: albedo (colour), height (grey → bump), optional roughness and normal. Height is turned into a normal in-shader (`bumpStrength` slider, 0–2) and *added* to the simulation normal (wave or crack). Height also modulates the crack path for solids (cracks prefer valleys) [🌤️] and wear (ridges erode first) [🌤️]. | [☀️] bump; [🌤️] crack/wear coupling |
-| A6 | **Per-layer height map and surface** (added 09:01) | The stack is no longer "4 images + one surface": each of the 4 layers is a **layer set** — albedo (the profile variant or any image), its own height map, and optionally its own surface material (liquid/solid type and numbers, or "inherit from above"). So: top layer rusted iron with its own relief, second layer bare steel with another, third a different profile on gallium… Erosion reveals not only another image but another *material*. The shader samples albedo/height/material from the layer under the current erosion value (and the one above, for the crossfade). The wave sim stays one field; only the *shading* and the *crack/wear behaviour* change per layer. ☁ Open: whether a drop on a liquid top layer that has worn down to a solid lower layer should crack there — I would say yes, and that makes B6 (cooling metal) a special case of this. | [☀️] per-layer albedo + height; [🌤️] per-layer material switching mid-piece |
+| A6 | **Per-layer height map and image** (added 09:01; narrowed 09:08) | Each of the 4 layers is a **layer set**: albedo (the profile variant or any image) + its own height map. Erosion reveals another image *with its own relief*. Material is **not** per layer (see §A7): one medium per piece. | [☀️] |
+| A7 | **Three axes, never mixed** (09:06–09:08) | **Medium** (one per piece): liquid / solid / **granular** (sand, dust, grime). Material numbers and material textures live here. **Layer** (up to 4): image + height only. **Impact** (per event): drop / strike / blow. Media do not mix within a piece — no cooling metal, no mud; B6 is dropped. | [☀️] |
+| A8 | **Impact types: drop, strike, blow** | Every event carries four medium-independent numbers — **energy, area, duration, direction** — and the medium turns them into its own physics. The three types are presets of those four. `events.json` carries only the four numbers. Per medium: *drop* = ring wave / hairline-to-cluster crack / crater with scatter; *strike* = broad low swell + splash / fissure with spalling / wide pit, grains thrown; *blow* = directional micro-waves while it lasts (the "violin as wind" idea, now medium-independent) / abrasion, skin peels along the brush / grains blown away, the layer below exposed. | [☀️] drop, strike; [🌤️] blow |
+| A9 | **Granular medium** | Not a wave equation: height transport — grains pushed outward from the impact, slide when the slope exceeds the angle of repose, pile up. Erosion is the most natural here: where grains leave, the layer below is bare; depth = grain-layer thickness (a real physical meaning for B4). Grain texture slot (albedo + grain size). | [🌤️] grain feel at 512² may stay soft |
 | A5 | **Light direction, strength, temperature** | Light panel: azimuth (0–360°), elevation (5–85°), intensity, colour temperature (2000–10000 K → RGB via a standard approximation), plus ambient level and HDRI rotation (if an HDRI is loaded, it rotates with the light). Shadows and the bevel highlights follow it. | [☀️] |
 
 ## B. Advisor's proposals
@@ -28,7 +31,7 @@ Marks: [☀️] certain · [🌤️] likely, may need a second pass · [☁️] 
 | B3 | **`events.json` from the recording** | Onset detection on Malter's track (librosa, Python) → {t, pitch, vel}; the prototype's drop rule reads it. Pitch → position, velocity → size. Hand-correctable in a text file. | [☀️] detection; [🌤️] *Alina*'s soft onsets may need threshold tuning |
 | B4 | **Layer thicknesses** (from 31 Oct) | `[t0, t1, t2, t3]` per layer instead of equal units; visible depth derived from accumulated erosion. Thin skin, thick core. | [☀️] |
 | B5 | **Dispersive waves** (separate pass, Opus) | Real liquid: short ripples travel faster than long swells; the current single-speed equation looks "drawn". Multi-band Verlet (2–3 bands) or spectral. Isolated so it can be reverted. | [🌤️] two passes possible |
-| B6 | **Cooling metal** (new liquid type) | Viscosity and tension rise with time; past a threshold the surface hands over to the solid family and freezes the wave map — liquid becomes crust becomes crack in one piece. Joins the two families. | [🌤️] transition tuning |
+| B6 | ~~Cooling metal~~ — **dropped** 09:08 (media never mix, A7). | — |
 | B7 | **Two more liquids by numbers**: molten gold, lead | Cheap; gives warm and dull options next to the cool ones. | [☀️] |
 | B8 | **Save / load settings** as a `.json` file (not only the readout) | Settings survive a reload; a chosen look is a file in the repo. | [☀️] |
 
@@ -36,10 +39,12 @@ Marks: [☀️] certain · [🌤️] likely, may need a second pass · [☁️] 
 
 | Pass | Contents | Model | Size |
 |---|---|---|---|
-| **1** | A1, A2, A3, A5, B1, B4, B7, B8 — all additive, same file | Sonnet | one long session |
-| **2** | A4 + A6 (per-layer sets: albedo, height, material; bump; crack/wear coupling), B6 (cooling metal, as a case of A6) | Sonnet | one session, maybe two |
-| **3** | B5 (dispersive waves) — isolated | Opus | one session, maybe two |
-| **4** | B2 (offline render) + B3 (events from the recording) — `render.js`, `events.py`, first 1080p test render of 60 s | Sonnet (render) + Python by advisor | one session + render time |
+| **1** | A1, A2, A3, A5, B1, B4, B7, B8 — additive, same file; plus the **impact model** (A8: four numbers, three presets, drop + strike for liquid and solid) | Sonnet | one long session |
+| **2** | A4 + A6 (per-layer image + height, bump, crack/wear follow relief) | Sonnet | one session |
+| **3** | A9 **granular medium** (drop + strike) | Sonnet | one session, maybe two |
+| **4** | A8 **blow** for all three media | Sonnet | one session |
+| **5** | B5 (dispersive waves) — isolated | Opus | one session, maybe two |
+| **6** | B2 (offline render) + B3 (events from the recording) — first 1080p test render of 60 s | Sonnet + Python by advisor | one session + render time |
 
 Each pass ends with: `node --check`, headless load at phone and iPad sizes, screenshots, push to `main`, one line in this file under "Done".
 
