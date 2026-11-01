@@ -8,7 +8,7 @@ For the next chat. Written 1 Nov 2026 by the advisor at the end of a two-day ses
 2. Say: "Read sound/xanadu-sound/part-clip/proto/HANDOFF.md and continue."
 3. Working language Turkish; system files English. Address: Üstadım.
 
-## What exists (all pushed to `main`, last commit of this session: `d891ec6`, 1 Nov 2026)
+## What exists (all pushed to `main`; pass 2 pushed 1 Nov 2026, evening — see the pass log)
 
 | Path | What | State |
 |---|---|---|
@@ -21,7 +21,7 @@ For the next chat. Written 1 Nov 2026 by the advisor at the end of a two-day ses
 
 ## Rulings by Bekir (do not reopen without him)
 
-- First clip: **Für Alina, piano only** — Alexander Malter, ECM *Alina* (1999), track 2, 10:47.
+- First clip: **Für Alina, piano only** — Alexander Malter, ECM *Alina* (1999), track 2, 10:47. **Medium: liquid** (ruling 1 Nov, afternoon).
 - Second: *Spiegel im Spiegel* (open; violin = blow/flow idea on file). Third: **Cantus in memoriam Benjamin Britten** for the **sweep** impact.
 - Three axes, **never mixed in one piece**: medium (liquid / solid / granular) · layer (image + its own height map, up to 4, then white) · impact (five types, four numbers: energy, area, duration, direction).
 - Sweep **absorbs** and **piles at its edge**; blow **pushes solids** (piece size = medium, scaled by energy — advisor's proposal, accepted "don't know"); flow flows.
@@ -35,17 +35,18 @@ For the next chat. Written 1 Nov 2026 by the advisor at the end of a two-day ses
 - Each pass: **Sonnet writes** (small, scoped brief; pixel-identical at defaults; node --check; headless Chrome at 390×844 and 1024×768 with `#surface=…&auto=1&seek=7`; screenshots) → **Opus reviews independently** (diff vs commit, measured regressions, determinism, iOS risks, wiring of every slider; fixes clear bugs, flags the rest) → advisor looks at screenshots → **push**. Commits as Bekir with the Claude co-author trailer.
 - Never commit a file an agent is still editing. Never send a message to a running agent (two were lost that way — the harness reported "stopped by the user"; cause unclear, probably an interrupted tool call). If an agent dies mid-edit: back up the half state to the scratchpad, `git checkout --` the file, re-run in smaller slices.
 - He is often on the phone: send 1–4 rendered frames (headless Chromium, software GL is slow: 5 frames ≈ 10 min) rather than asking him to open the page. `#seek=N` fast-forwards the sim; `#auto=1` turns on synthetic events; `#surface=`, `#aspect=`, `#impact=`, `#drop=`, `#random=1&seed=N` exist.
-- Useful hooks on `window.XANADU`: `fieldRes`, `light`, `readMask()`, `step`, `fire`.
+- Useful hooks on `window.XANADU`: `fieldRes`, `light`, `readMask()`, `readWave()`, `step`, `fire`, `loadLayerHeight`, `clearLayerHeight`, `layerHeights`, `cracks`.
 
 ## Pass log
 
 - Pass 1a (done, reviewed): light panel (azimuth/elevation/intensity/Kelvin/ambient), erosion field 512², thinner layer edge (edgeWidth 0.04 raised-cosine bevel, wearSoftness/edgeSharpness), thickness[4] + depthScale, Molten gold, Lead.
 - Pass 1b (done, reviewed, fuzzed): any aspect ratio (rectangular isotropic fields), fit cover/contain/stretch + offset, RENDER settings block, PNG/JPEG/TIFF (inline decoder: LE/BE, 8/16-bit, none/LZW+predictor; 150 Mpx cap), 16-bit → RGBA16F.
-- Pass 1c (done, reviewed — no bugs; one flag: **liquid strike reads narrower than a drop**, outer ring r95 268 px vs 355 px at 2.5 s — fix first in pass 2: strike should spread over `area`, lower amplitude, wider ring): texture slots (solid: albedo/height→bump/roughness; liquid: brushing/HDRI), save/load settings JSON, impact model first half (drop + strike; sweep/blow/flow inert), Random 45 s uses the impact type.
+- Pass 1c (done, reviewed — no bugs; one flag, fixed in pass 2: liquid strike read narrower than a drop): texture slots (solid: albedo/height→bump/roughness; liquid: brushing/HDRI), save/load settings JSON, impact model first half (drop + strike; sweep/blow/flow inert), Random 45 s uses the impact type.
+- Pass 2 (done, reviewed — one house-style fix; three flags below): liquid strike rebuilt (zero-volume swell, lam/sigma 3.40, swell amp 0.30 + splash 0.4 of a drop's: wider AND lower — lip ring 1.75× a drop's at 2.5 s, peak 0.27× at 0.6 s); A6 per-layer height map (second TEXTURE_2D_ARRAY, R8/R16F, Height/Clear per layer, `layerBump` 0–2; solid bump crossfades with the stack, liquid = diffuse shading only); A4 relief coupling (`reliefWear` 0–1 in both mask shaders, `reliefCrack` 0–1 steers the crack planner, `RELIEF_K` 0.10). Details in PLAN-v2 "Done — pass 2".
 
 ## Next passes (PLAN-v2 §C + IMPACTS.md)
 
-2. A4 + A6: per-layer height map (bump; cracks prefer valleys, ridges wear first).
+2. ~~A4 + A6~~ done.
 3. Granular medium (sand/dust): height transport, angle of repose; drop + strike.
 4. Sweep for all three media (absorb + pile).
 5. Blow + flow for all three media.
@@ -64,11 +65,16 @@ For the next chat. Written 1 Nov 2026 by the advisor at the end of a two-day ses
 - Settings key is still `dropSize` while the slider reads "Energy" (cosmetic; rename when the save format next changes).
 - Three 2048² 16-bit texture slots + 16-bit HDRI ≈ 170 MB on an iPad — keep textures at 1024 on mobile.
 - Drops clustering → cracks become a lattice; to be solved by position rule in `events.json`, not in the prototype.
+- (pass 2) Relief wear with an **8-bit** height map makes grain in the eroded depth on liquids (depth Laplacian p99 0.021 vs 0.002 with the same map as 16-bit TIFF). Fix: read the mask relief one mip coarser (`uLHLod + 1`) and/or store R16F whenever the device can. Defaults unaffected.
+- (pass 2) `RELIEF_K` 0.10 is a mild lean (valley share of crack length +0.10 at reliefCrack 1 on a 50 %-contrast sine); real maps are gentler → try 0.2–0.25 with Bekir's maps.
+- (pass 2) Both mask shaders compute the relief for every texel while reliefWear > 0; gate on `adv > 0` / `inc > 0` (same output, less work).
+- (pass 2, pre-existing since 1c) A strike leaves a flat standing offset in the wave field (~0.015 per strike at swell amp 0.30; the old strike left 0.017). Invisible (display reads only the slope) and harmless in RGBA32F; on the RGBA16F fallback precision degrades after ~100 strikes. Fix later: subtract the field mean, or make the injection velocity-neutral.
+- (pass 2) Solid display: +8 texture reads per fragment while a layer height map is in use (known +11 → +19); liquid display +8 under the same condition; masks +2/+3 while reliefWear > 0.
 
 ## Open questions for Bekir
 
 - Ear test (`fr-001-tintinnabuli`): which `|`, which ambiguity, is K too shrill? — unanswered since 31 Oct.
 - Thin lip vs old bevel on the liquid edge — judge on iPad.
-- Which medium for *Für Alina*: liquid (advisor's view) or solid?
 - Default layer thicknesses — advisor suggested [0.4, 1.5, 2.5, 3].
+- Pass 2 taste calls: is the strike's basin (swell amp 0.30) right on screen? Is `reliefCrack` strong enough with real maps? — judge with his own height maps.
 - Send the UE brief (§11.6 of the project file), now for two works (Alina, Cantus); ECM master quote in parallel.

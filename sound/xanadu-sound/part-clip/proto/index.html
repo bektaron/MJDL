@@ -168,12 +168,27 @@ pre#advNum{margin:0 0 8px;padding:10px;font:12px/1.5 ui-monospace,SFMono-Regular
       </div>
       <p class="note" id="vinfo">Variants: 4 procedural placeholders, then white.</p>
       <p class="note warn" id="vmsg" role="alert" hidden></p>
+      <div class="grp">Layer height maps (grey → the relief of that layer; fitted like the layer images)</div>
+      <div class="texrow"><span class="tl">Layer 1</span><label class="filebtn" for="fLH0">Height</label><input id="fLH0" type="file" accept="image/*,.tif,.tiff,.png,.jpg,.jpeg" data-lh="0"><button type="button" data-lhclear="0">Clear</button></div>
+      <p class="note tex" id="tnLH0"></p>
+      <div class="texrow"><span class="tl">Layer 2</span><label class="filebtn" for="fLH1">Height</label><input id="fLH1" type="file" accept="image/*,.tif,.tiff,.png,.jpg,.jpeg" data-lh="1"><button type="button" data-lhclear="1">Clear</button></div>
+      <p class="note tex" id="tnLH1"></p>
+      <div class="texrow"><span class="tl">Layer 3</span><label class="filebtn" for="fLH2">Height</label><input id="fLH2" type="file" accept="image/*,.tif,.tiff,.png,.jpg,.jpeg" data-lh="2"><button type="button" data-lhclear="2">Clear</button></div>
+      <p class="note tex" id="tnLH2"></p>
+      <div class="texrow"><span class="tl">Layer 4</span><label class="filebtn" for="fLH3">Height</label><input id="fLH3" type="file" accept="image/*,.tif,.tiff,.png,.jpg,.jpeg" data-lh="3"><button type="button" data-lhclear="3">Clear</button></div>
+      <p class="note tex" id="tnLH3"></p>
       <div class="grp">Layer thickness (depth units)</div>
       <div class="ctl"><label for="sTh0">Layer 1</label><input id="sTh0" type="range" min="0.2" max="3" step="0.05" value="1"><output id="oTh0"></output></div>
       <div class="ctl"><label for="sTh1">Layer 2</label><input id="sTh1" type="range" min="0.2" max="3" step="0.05" value="1"><output id="oTh1"></output></div>
       <div class="ctl"><label for="sTh2">Layer 3</label><input id="sTh2" type="range" min="0.2" max="3" step="0.05" value="1"><output id="oTh2"></output></div>
       <div class="ctl"><label for="sTh3">Layer 4</label><input id="sTh3" type="range" min="0.2" max="3" step="0.05" value="1"><output id="oTh3"></output></div>
       <div class="ctl"><label for="sDScale">Depth scale</label><input id="sDScale" type="range" min="0" max="1" step="0.01" value="0.3"><output id="oDScale"></output></div>
+      <div class="grp">Relief (the height maps: light, wear, cracks)</div>
+      <div class="ctl"><label for="sLBump">Layer bump</label><input id="sLBump" type="range" min="0" max="2" step="0.05" value="1"><output id="oLBump"></output></div>
+      <div class="ctl"><label for="sRWear">Relief wear</label><input id="sRWear" type="range" min="0" max="1" step="0.01" value="0"><output id="oRWear"></output></div>
+      <div class="ctl" id="cRCrack"><label for="sRCrack">Relief crack</label><input id="sRCrack" type="range" min="0" max="1" step="0.01" value="0"><output id="oRCrack"></output></div>
+      <p class="note" id="rnote2">Layer bump: the relief of each layer's own height map (a solid shades it like the bump; a liquid shows it faintly through the film, on the image only). Relief wear: ridges (light) erode faster, valleys (dark) slower, in both families. Relief crack (solids): cracks lean toward valleys. All three read the layer at the surface and, on a solid, the medium's height texture; with no height map loaded they change nothing.</p>
+      <p class="note" id="rcnote" hidden>relief crack steers the cracks of solid surfaces only</p>
       <div class="grp">Textures (kept when the surface changes; max 2048 per side)</div>
       <div id="texSolid">
         <div class="texrow"><span class="tl">Albedo</span><label class="filebtn" for="fTexAlbedo">Load</label><input id="fTexAlbedo" type="file" accept="image/*,.tif,.tiff,.png,.jpg,.jpeg" data-slot="albedo"><button type="button" data-clear="albedo">Clear</button></div>
@@ -724,13 +739,59 @@ void main(){
   o = vec4(s + uTens * (sl + sr + sd + su - 4.0 * s), 0.0, 1.0);
 }`;
 
+// Eroded depth d (depth units) -> position in the layer stack: layer k spans [t0 + .. + t(k-1), + tk], so each layer adds
+// clamp((d - start) / thickness, 0, 1). With every thickness 1 this is d itself. Shared by the display shaders and by the mask shaders
+// (the relief wear needs the layer that is at the surface of a texel).
+const GLSL_STACK = `
+uniform vec4 uTh;                  // layer thicknesses t0..t3 (depth units)
+float stackPos(float d){
+  float p = 0.0, c = 0.0;
+  for (int k = 0; k < 4; k++) { p += clamp((d - c) / uTh[k], 0.0, 1.0); c += uTh[k]; }
+  return p;
+}
+`;
+
+// RELIEF WEAR (A4), mask side. Both erosion masks (liquid FS_MASK, solid FS_MASK_SOLID) multiply the erosion increment of a texel by
+//     wearMul = clamp(1 + reliefWear x 2 x (h - 0.5), 0.2, 1.8)      (ridges h > 0.5 wear faster, valleys slower; reliefWear 0 = exactly 1)
+// where h is the COMBINED RELIEF at the texel, 0..1 with 0.5 = flat, from the layer at the surface and, on solids, the medium's height texture:
+//     dL = mix(pa x (ha - 0.5), pb x (hb - 0.5), m)   the two crossfaded layers a (= floor p) and b (= the next) of the texel's stack position p
+//                                                      (pa / pb = 1 when that layer carries a map, else 0 = flat; the white base is flat), m = the
+//                                                      wide layer crossfade smoothstep(0.12, 0.88, f), the same as layerMix without the lip
+//     wL = mix(pa, pb, m)                              how much of the layer part is present
+//     dM = hM - 0.5 if the medium carries a height texture (solids), else 0      (grey = luminance)
+//     h  = 0.5 + (dL + dM) / max(wL + hasM, 1)         the MEAN of the maps that are present (a lone map keeps its full contrast; two average;
+//                                                      a layer map that is crossfading out fades with it)
+// The texel's layer is read at its TARGET depth (the logical state, before this step's increment). Heights are read with an explicit LOD
+// (the height array is 2x the mask, so LOD 1), which makes the read independent of derivatives inside the drop loop.
+const GLSL_MASK_RELIEF = `
+${GLSL_STACK}
+uniform sampler2DArray uLHgt;
+uniform sampler2D uHgtM;           // the medium's height texture (solids), fitted to the canvas
+uniform vec4 uHasLH;
+uniform float uNImg, uRWear, uLHLod, uHasHM, uHMLod;
+float reliefAt(vec2 uv, float d){
+  float p = clamp(stackPos(d), 0.0, uNImg);
+  float fi = floor(p), fb = min(fi + 1.0, uNImg), m = smoothstep(0.12, 0.88, p - fi);
+  vec2 t = vec2(uv.x, 1.0 - uv.y);
+  float pa = (fi > uNImg - 0.5) ? 0.0 : uHasLH[int(min(fi, 3.0))];
+  float pb = (fb > uNImg - 0.5) ? 0.0 : uHasLH[int(min(fb, 3.0))];
+  float ha = textureLod(uLHgt, vec3(t, min(fi, 3.0)), uLHLod).r;
+  float hb = textureLod(uLHgt, vec3(t, min(fb, 3.0)), uLHLod).r;
+  float dL = mix(pa * (ha - 0.5), pb * (hb - 0.5), m), wL = mix(pa, pb, m);
+  float dM = 0.0;
+  if (uHasHM > 0.5) dM = dot(textureLod(uHgtM, t, uHMLod).rgb, vec3(0.299, 0.587, 0.114)) - 0.5;
+  return 0.5 + (dL + dM) / max(wL + uHasHM, 1.0);
+}
+float wearMul(vec2 uv, float d){ return clamp(1.0 + uRWear * 2.0 * (reliefAt(uv, d) - 0.5), 0.2, 1.8); }
+`;
+
 // Erosion mask. Each texel keeps TWO continuous values (not an index): .x = target, .y = shown.
 // Value d in [0, uMax] is the accumulated erosion DEPTH in depth units (a default drop adds up to 1). A layer is passed when d
 // exceeds its thickness; uMax is the total thickness of the uploaded layers, below which the stack ends in the white base.
 // The display turns d into a stack position p (see stackPos) using the four layer thicknesses; with all of them 1, p = d.
 // Stored in a float texture, read with texelFetch (no filtering needed).
 const FS_MASK = `#version 300 es
-precision highp float; precision highp sampler2D;
+precision highp float; precision highp sampler2D; precision highp sampler2DArray;
 #define MAXD ${MAXD}
 uniform sampler2D uIn;
 uniform vec4 uMa[MAXD];        // x, y (uv), reveal radius, active
@@ -738,6 +799,7 @@ uniform vec4 uMb[MAXD];        // age at step start, age at step end, reveal dur
 uniform vec4 uMc[MAXD];        // erosion amount at the centre, feather start (fraction of radius)
 uniform float uMax, uStep;
 uniform vec2 uSz, uAsp;        // mask size in texels; physical extent in long-side units (see FS_SIM)
+${GLSL_MASK_RELIEF}
 out vec4 o;
 void main(){
   vec4 m = texelFetch(uIn, ivec2(gl_FragCoord.xy), 0);
@@ -761,6 +823,7 @@ void main(){
     float p1 = smoothstep(0.0, 1.0, clamp((b.y - tr) / b.z, 0.0, 1.0));
     adv += c.x * (1.0 - smoothstep(c.y * a.z, a.z, r)) * (p1 - p0);
   }
+  if (uRWear > 0.0) adv *= wearMul(uv, pt);         // relief wear (A4): ridges erode faster, valleys slower (uRWear is 0 unless a height map exists)
   pt = min(pt + adv, max(uMax, pt));                // the stack ends at white: more drops change nothing (a thinner stack never cuts what is already there)
   ps = min(ps + min(pt - ps, uStep), pt);           // shown value chases the target (monotone, never wraps)
   o = vec4(pt, ps, 0.0, 1.0);
@@ -788,8 +851,15 @@ uniform sampler2DArray uVar;
 uniform float uNImg, uGridL;       // uGridL = long side of the erosion mask (fieldRes)
 uniform vec2 uGrid;                // erosion mask size in texels (width, height)
 uniform vec2 uAsp;                 // physical extent of the canvas in units of its long side: (1, 1/aspect) or (aspect, 1)
-uniform vec4 uTh;                  // layer thicknesses t0..t3 (depth units)
+${GLSL_STACK}
 uniform float uEdgeSharp, uLipTex; // layer-edge lip: 0..1, and its width in mask texels (1 at sharpness 1)
+// per-layer height maps (A6): R = grey, 4 layers at the size of uVar, flat 0.5 where a layer has none. uHasLH = 1 for a layer that carries one.
+uniform sampler2DArray uLHgt;
+uniform vec4 uHasLH;
+uniform float uAnyLH, uLBump;      // 1 when any layer carries a map; the Layer bump slider (0..2)
+uniform vec2 uLHSz;                // size of the height array in texels (width, height)
+const float LH_H = 0.02;           // height range of a layer map (long-side units): white minus black. Slope = LH_H x gradient x Layer bump (the same range as the medium's BUMP_H)
+const float LH_LIQ = 2.0;          // liquids: the relief is seen through the film as a diffuse term on the image only; 2x the solid slope range (0.5 left it invisible: max 3 of 255 at layerBump 2). Measured with a 50 %-contrast map: layerBump 1 shifts the image by up to ~4 of 255, 2 by ~8: visible, subtle
 // the light (one set of numbers for every shading term): direction TO the light in the image frame (u right, v up, z out of the surface)
 uniform vec3 uLdir;                // unit vector
 uniform vec2 uLaz;                 // (cos, sin) of the azimuth
@@ -826,12 +896,14 @@ vec3 layerCol(float i, vec2 iuv){
   return (i > uNImg - 0.5) ? WHITE : t;
 }
 
-// Eroded depth d (depth units) -> position in the layer stack: layer k spans [t0 + .. + t(k-1), + tk], so each layer adds
-// clamp((d - start) / thickness, 0, 1). With every thickness 1 this is d itself.
-float stackPos(float d){
-  float p = 0.0, c = 0.0;
-  for (int k = 0; k < 4; k++) { p += clamp((d - c) / uTh[k], 0.0, 1.0); c += uTh[k]; }
-  return p;
+// Slope (height per long-side unit) of the height map of stack layer i at image position t, by central differences over hs (texture units):
+// 0 for the white base (past the last layer) and for a layer without a map. Rows run down, v runs up, as in the medium's height bump.
+vec2 lhGrad(float i, vec2 t, vec2 hs){
+  float ii = min(i, 3.0);
+  float w = (i > uNImg - 0.5) ? 0.0 : uHasLH[int(ii)];
+  float xp = texture(uLHgt, vec3(t + vec2(hs.x, 0.0), ii)).r, xm = texture(uLHgt, vec3(t - vec2(hs.x, 0.0), ii)).r;
+  float yp = texture(uLHgt, vec3(t - vec2(0.0, hs.y), ii)).r, ym = texture(uLHgt, vec3(t + vec2(0.0, hs.y), ii)).r;
+  return w * vec2(xp - xm, yp - ym) / (2.0 * hs * uAsp);
 }
 // Weight of the layer below at fraction f of the layer being worn through. gl = length of the stack-position gradient per mask texel.
 //   wide crossfade (the worn skin, as before)  vs  a narrow lip on the line f = 0.5, uLipTex texels wide, whose width is
@@ -912,6 +984,14 @@ void main(){
   vec3 nL = normalize(vec3(-g * 6.0, 1.0));
   vec3 L = uLdir;
   vec3 dif = vec3(uAmb) + 0.75 * uLcol * max(dot(nL, L), 0.0);
+  if (uAnyLH > 0.5) {
+    // per-layer relief, seen through the film: the height map of the layer at the surface (crossfaded like its image: fi / fb / m above) as a
+    // diffuse term on the IMAGE only, the flat-surface term divided out so a flat map changes nothing; the waves, the reflection and the bevel are untouched
+    vec2 hsR = max(1.0 / uLHSz, fwidth(uv));
+    vec2 gR = mix(lhGrad(fi, iuv, hsR), lhGrad(fb, iuv, hsR), m) * (LH_H * LH_LIQ * uLBump);
+    vec3 nR = normalize(vec3(-gR, 1.0));
+    alb *= (vec3(uAmb) + 0.75 * uLcol * max(dot(nR, L), 0.0)) / max(vec3(uAmb) + 0.75 * uLcol * L.z, vec3(1e-3));
+  }
   // 5. metal: Fresnel reflection of the environment, F0 = uReflect, exponent from the liquid
   vec3 nE = normalize(vec3(-g * 16.0, 1.0));
   vec3 V = normalize(vec3((0.5 - uv) * uAsp, 1.7));
@@ -1007,14 +1087,18 @@ void main(){
 // Solid erosion mask: same two values as FS_MASK (.x target, .y shown, depth units), but the increment comes from the
 // crack-band texture drawn this step instead of from radial drop discs. Bottoms out at uMax (white), no wrap.
 const FS_MASK_SOLID = `#version 300 es
-precision highp float; precision highp sampler2D;
+precision highp float; precision highp sampler2D; precision highp sampler2DArray;
 uniform sampler2D uIn, uInc;
 uniform float uMax, uStep;
+uniform vec2 uSz;              // mask size in texels
+${GLSL_MASK_RELIEF}
 out vec4 o;
 void main(){
   ivec2 ip = ivec2(gl_FragCoord.xy);
   vec4 m = texelFetch(uIn, ip, 0);
-  float pt = min(m.x + texelFetch(uInc, ip, 0).r, max(uMax, m.x));
+  float inc = texelFetch(uInc, ip, 0).r;
+  if (uRWear > 0.0) inc *= wearMul(gl_FragCoord.xy / uSz, m.x);   // relief wear (A4): ridges erode faster, valleys slower (uRWear is 0 unless a height map exists)
+  float pt = min(m.x + inc, max(uMax, m.x));
   float ps = min(m.y + min(pt - m.y, uStep), pt);
   o = vec4(pt, ps, 0.0, 1.0);
 }`;
@@ -1171,6 +1255,11 @@ void main(){
     float hyp = hLum(texture(uHgtT, ti - vec2(0.0, hs.y)).rgb), hym = hLum(texture(uHgtT, ti + vec2(0.0, hs.y)).rgb);   // image rows run down, uv.y runs up
     gs += vec2(hxp - hxm, hyp - hym) / (2.0 * hs * uAsp) * (BUMP_H * uBump * (1.0 - floorW));
   }
+  if (uAnyLH > 0.5) {             // per-layer height map -> bump: the layer at the surface (stack position p), crossfaded exactly like its image (stackCol), so the relief crossfades as the erosion passes from one layer to the next; weakened inside fissures like the medium bump
+    float fiR = floor(p), fbR = min(fiR + 1.0, uNImg);
+    vec2 hsR = max(1.0 / uLHSz, fwidth(uv));
+    gs += mix(lhGrad(fiR, iuv, hsR), lhGrad(fbR, iuv, hsR), layerMix(p - fiR, gl1)) * (LH_H * uLBump * (1.0 - floorW));
+  }
   vec3 nL = normalize(vec3(-gs, 1.0));
   vec3 dif = vec3(uAmb) + 0.75 * uLcol * max(dot(nL, L), 0.0);
   vec3 nE = normalize(vec3(-gs * 1.6, 1.0));
@@ -1212,21 +1301,23 @@ function makeProg(fs, names, vs) {
 }
 
 const LIGHT_U = ['uTh', 'uEdgeSharp', 'uLipTex', 'uLdir', 'uLaz', 'uTanE', 'uLcol', 'uAmb', 'uLint', 'uEnvRot'];   // shared by both display shaders
+const RELIEF_U = ['uLHgt', 'uHasLH', 'uAnyLH', 'uLBump', 'uLHSz'];                                                  // per-layer height maps, read by both display shaders
+const MASK_RELIEF_U = ['uLHgt', 'uHgtM', 'uTh', 'uNImg', 'uHasLH', 'uRWear', 'uLHLod', 'uHasHM', 'uHMLod'];            // relief wear, read by both mask shaders
 let progSim, progTens, progMask, progDerive, progDisplay, progCrack, progFrag, progMaskS, progDisplayS;
 try {
   progSim = makeProg(FS_SIM, ['uState', 'uC2', 'uDamp', 'uEdge', 'uSpread', 'uRs', 'uSz', 'uAsp', 'uDa', 'uDb']);
   progTens = makeProg(FS_TENS, ['uState', 'uSz', 'uTens']);
-  progMask = makeProg(FS_MASK, ['uIn', 'uMa', 'uMb', 'uMc', 'uMax', 'uStep', 'uSz', 'uAsp']);
+  progMask = makeProg(FS_MASK, ['uIn', 'uMa', 'uMb', 'uMc', 'uMax', 'uStep', 'uSz', 'uAsp'].concat(MASK_RELIEF_U));
   progDerive = makeProg(FS_DERIVE, ['uState', 'uSz']);
   progDisplay = makeProg(FS_DISPLAY, ['uDerived', 'uMask', 'uVar', 'uReflect', 'uRefract', 'uIdle', 'uTime', 'uNImg', 'uGrid', 'uGridL', 'uAsp', 'uW',
     'uFPow', 'uSpecPow', 'uBrushStr', 'uBrushDir', 'uIrid', 'uIdleScale', 'uIdleRate', 'uEdgeW', 'uEdgeH', 'uDepthK', 'uTint',
-    'uBrushT', 'uHdriT', 'uHasBrush', 'uBrushTile', 'uHasHdri', 'uHdriLod', 'uHdriYaw'].concat(LIGHT_U));
+    'uBrushT', 'uHdriT', 'uHasBrush', 'uBrushTile', 'uHasHdri', 'uHdriLod', 'uHdriYaw'].concat(LIGHT_U, RELIEF_U));
   progCrack = makeProg(FS_CRACK, ['uMode', 'uAsp'], VS_CRACK);
   progFrag = makeProg(FS_FRAG, ['uMode', 'uAsp'], VS_CRACK);
-  progMaskS = makeProg(FS_MASK_SOLID, ['uIn', 'uInc', 'uMax', 'uStep']);
+  progMaskS = makeProg(FS_MASK_SOLID, ['uIn', 'uInc', 'uMax', 'uStep', 'uSz'].concat(MASK_RELIEF_U));
   progDisplayS = makeProg(FS_DISPLAY_SOLID, ['uCrack', 'uFrag', 'uMask', 'uVar', 'uReflect', 'uRefract', 'uIdle', 'uTime', 'uCrackRes', 'uCrackD', 'uNImg', 'uGrid', 'uGridL', 'uAsp',
     'uFPow', 'uSpecPow', 'uBrushStr', 'uBrushDir', 'uBevel', 'uPitAmt', 'uDepthH', 'uTint', 'uColA', 'uColB', 'uColC', 'uColD', 'uColP', 'uCov', 'uSc',
-    'uAlbT', 'uHgtT', 'uRghT', 'uHasAlb', 'uHasHgt', 'uHasRgh', 'uBump', 'uHgtSz'].concat(LIGHT_U));
+    'uAlbT', 'uHgtT', 'uRghT', 'uHasAlb', 'uHasHgt', 'uHasRgh', 'uBump', 'uHgtSz'].concat(LIGHT_U, RELIEF_U));
 } catch (err) { fail(String(err.message || err)); return; }
 
 const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
@@ -1308,6 +1399,7 @@ gl.bindVertexArray(vao);
 const varTex = gl.createTexture();
 let variantN = 4, varW = VAR_RES, varH = VAR_RES, var16 = false;
 let proceduralMode = true;
+let vinfoBase = '';               // the layer line of the info text; the height-map sentence is appended by showLayerHeights()
 let sources = [];                 // uploaded layers: { kind: 'img', el, name } | { kind: 'tiff', img, name }
 const can16 = !!(extF || extH);
 function uploadLayers(layers, W, H, want16) {
@@ -1346,7 +1438,8 @@ function useProcedural() {
   const [W, H] = dimsFor(VAR_RES);
   uploadLayers([0, 1, 2, 3].map((v) => ({ canvas: makeProceduralVariant(v, W, H) })), W, H, false);
   proceduralMode = true; sources = [];
-  $('vinfo').textContent = 'Variants: 4 procedural placeholders, then white.';
+  vinfoBase = 'Variants: 4 procedural placeholders, then white.';
+  buildLayerHeights();
 }
 
 // Fit rule -> source window and destination window (pixels). offset -1..1 places the window in the slack: -1 = left / top edge, 1 = right / bottom.
@@ -1360,10 +1453,11 @@ function fitPlan(sw, sh, W, H) {
   const k = Math.max(W / sw, H / sh), cw = W / k, ch = H / k;
   return { sx: (sw - cw) * ox, sy: (sh - ch) * oy, sw: cw, sh: ch, dx: 0, dy: 0, dw: W, dh: H };
 }
-function fitCanvas(img, W, H, plan) {      // 8-bit image (PNG, JPEG, anything the browser decodes) -> W x H canvas, letterbox in the surface tone; plan: a fitPlan (default: the fit rule)
+function fitCanvas(img, W, H, plan, fill) {      // 8-bit image (PNG, JPEG, anything the browser decodes) -> W x H canvas, letterbox in the surface tone (or `fill`, 0..255 rgb); plan: a fitPlan (default: the fit rule)
   const c = document.createElement('canvas'); c.width = W; c.height = H;
   const x = c.getContext('2d');
-  x.fillStyle = `rgb(${SURFACE_TONE[0]},${SURFACE_TONE[1]},${SURFACE_TONE[2]})`;
+  const tn = fill || SURFACE_TONE;
+  x.fillStyle = `rgb(${tn[0]},${tn[1]},${tn[2]})`;
   x.fillRect(0, 0, W, H);
   const p = plan || fitPlan(img.naturalWidth || img.width, img.naturalHeight || img.height, W, H);
   x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
@@ -1371,10 +1465,11 @@ function fitCanvas(img, W, H, plan) {      // 8-bit image (PNG, JPEG, anything t
   return c;
 }
 // Decoded TIFF -> Float32 RGBA (W x H, 0..1) through the fit plan. Separable tent filter of radius max(footprint, 1) source pixels: a
-// bilinear lookup when enlarging, an area-weighted average when reducing. Alpha is composited over the surface tone. Cost ~ source pixels.
-function resampleRaw(img, W, H, p) {
+// bilinear lookup when enlarging, an area-weighted average when reducing. Alpha is composited over the surface tone (or `fill`, 0..255 rgb). Cost ~ source pixels.
+function resampleRaw(img, W, H, p, fill) {
+  const tone = fill || SURFACE_TONE;
   const out = new Float32Array(W * H * 4);
-  for (let i = 0; i < W * H; i++) { out[4 * i] = SURFACE_TONE[0] / 255; out[4 * i + 1] = SURFACE_TONE[1] / 255; out[4 * i + 2] = SURFACE_TONE[2] / 255; out[4 * i + 3] = 1; }
+  for (let i = 0; i < W * H; i++) { out[4 * i] = tone[0] / 255; out[4 * i + 1] = tone[1] / 255; out[4 * i + 2] = tone[2] / 255; out[4 * i + 3] = 1; }
   const sw = img.width, sh = img.height, spp = img.spp, data = img.data, maxv = img.bits === 16 ? 65535 : 255;
   const gray = spp === 1, hasA = spp === 4 && img.alpha !== 'none', assoc = img.alpha === 'associated';
   const x0 = Math.max(0, Math.ceil(p.dx - 0.5)), x1 = Math.min(W, Math.floor(p.dx + p.dw - 0.5) + 1);
@@ -1395,7 +1490,7 @@ function resampleRaw(img, W, H, p) {
   }
   colOff[nx] = wp;
   const acc = new Float32Array(sw * 4);
-  const T0 = SURFACE_TONE[0] / 255, T1 = SURFACE_TONE[1] / 255, T2 = SURFACE_TONE[2] / 255;
+  const T0 = tone[0] / 255, T1 = tone[1] / 255, T2 = tone[2] / 255;
   for (let j = y0; j < y1; j++) {
     const v = p.sy + (j + 0.5 - p.dy) * fy;
     const ylo = Math.max(0, Math.ceil(v - Ry - 0.5)), yhi = Math.min(sh - 1, Math.floor(v + Ry - 0.5));
@@ -1435,9 +1530,130 @@ function buildLayers() {
     : { canvas: fitCanvas(s.el, W, H) }));
   uploadLayers(layers, W, H, sources.some((s) => s.kind === 'tiff' && s.img.bits === 16));
   proceduralMode = false;
-  $('vinfo').textContent = 'Variants: ' + layers.length + ' uploaded image' + (layers.length > 1 ? 's' : '') + ', then white. ' + W + '×' + H + (var16 ? ', 16-bit float' : ', 8-bit') +
+  vinfoBase = 'Variants: ' + layers.length + ' uploaded image' + (layers.length > 1 ? 's' : '') + ', then white. ' + W + '×' + H + (var16 ? ', 16-bit float' : ', 8-bit') +
     (sources.some((s) => s.kind === 'tiff' && s.img.bits === 16) && !var16 ? ' (this device cannot hold 16-bit layers: reduced to 8 bits)' : '') + '.';
+  buildLayerHeights();
 }
+
+/* ======================================================================
+   LAYER HEIGHT MAPS (A6). A layer is an image plus its own height map: erosion that reveals the next image reveals its relief too.
+   Each of the four layers can carry a height map (grey, or RGB -> luminance; PNG / JPEG / TIFF, 8- or 16-bit, same readers as the layers). It
+   attaches to the uploaded image of the SAME layer number and is fitted with the same fit rule (cover / contain / stretch + offset), so an
+   aspect or fit change re-fits it with the layers. Procedural placeholders carry no height; a map loaded then waits (kept, not used) until an
+   image exists for its layer. The slots persist across image uploads, Procedural and aspect changes, and have their own Clear.
+   GPU: `varHgtTex`, a TEXTURE_2D_ARRAY of 4 layers at the size of the layer stack, the grey in R only: R8, or R16F when any map in use is a
+   16-bit TIFF and the device can (the same rule as the stack, and for the same reason; R only keeps it at 1/4 of the stack's memory: 4 MB at
+   1024 x 1024, 5.3 MB with mips; R16F 8 / 10.7 MB). A layer without a map is flat 0.5 (no relief) and its flag (lhFlags) is 0, so a layer
+   that is empty costs nothing visible; with no flag set at all the shaders skip the reads.
+   CPU: a Float32 grey copy of every map in use at LH_CPU on the long side (made here, at upload / re-fit): the crack planner steers by it.
+   The medium's height texture (solids, TEXTURES block) is unchanged: it is the medium axis, the layer maps are the layer axis.
+   ====================================================================== */
+const LH_CPU = 256;                   // long side of the CPU grey copy of every height map (crack steering reads it)
+const LH_FILL = [128, 128, 128];      // letterbox of a contained height map: flat 0.5
+const varHgtTex = gl.createTexture();
+const layerH = [null, null, null, null];     // { src, name } per layer slot
+const lhFlags = [0, 0, 0, 0];         // 1 = the layer's map is in use (not procedural, and the layer has an uploaded image)
+const lhGrey = [null, null, null, null];     // CPU copies { w, h, d } of the maps in use
+let lhW = 1, lhH = 1, lhBits = 8, medGrey = null;    // size / depth of varHgtTex; CPU copy of the medium's height texture (see buildSlot)
+const lhActive = (i) => !proceduralMode && i < variantN && !!layerH[i];
+const lhAny = () => lhFlags.some((f) => f > 0);
+const lum = (r, g, b) => 0.299 * r + 0.587 * g + 0.114 * b;     // the shader's hLum
+
+// source -> W x H grey (Float32, 0..1) through the fit plan; letterbox flat 0.5
+function greyOf(src, W, H) {
+  const [sw, sh] = sourceSize(src), plan = fitPlan(sw, sh, W, H), f = new Float32Array(W * H);
+  if (src.kind === 'tiff') {
+    const q = resampleRaw(src.img, W, H, plan, LH_FILL);
+    for (let i = 0; i < W * H; i++) f[i] = lum(q[4 * i], q[4 * i + 1], q[4 * i + 2]);
+    return { f, bits: src.img.bits };
+  }
+  const px = fitCanvas(src.el, W, H, plan, LH_FILL).getContext('2d').getImageData(0, 0, W, H).data;
+  for (let i = 0; i < W * H; i++) f[i] = lum(px[4 * i], px[4 * i + 1], px[4 * i + 2]) / 255;
+  return { f, bits: 8 };
+}
+// W x H grey -> gw x gh by area averaging (deterministic, integer cell bounds)
+function downGrey(f, W, H, gw, gh) {
+  const out = new Float32Array(gw * gh);
+  for (let j = 0; j < gh; j++) {
+    const y0 = Math.floor(j * H / gh), y1 = Math.max(y0 + 1, Math.floor((j + 1) * H / gh));
+    for (let i = 0; i < gw; i++) {
+      const x0 = Math.floor(i * W / gw), x1 = Math.max(x0 + 1, Math.floor((i + 1) * W / gw));
+      let sum = 0;
+      for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) sum += f[y * W + x];
+      out[j * gw + i] = sum / ((y1 - y0) * (x1 - x0));
+    }
+  }
+  return out;
+}
+function uploadLH(grey, W, H, want16) {
+  gl.bindTexture(gl.TEXTURE_2D_ARRAY, varHgtTex);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  const per = W * H;
+  let done = false;
+  if (want16 && can16) {
+    const data = new Float32Array(per * 4).fill(0.5);
+    for (let i = 0; i < 4; i++) if (grey[i]) data.set(grey[i], i * per);
+    drainGL();
+    gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.R16F, W, H, 4, 0, gl.RED, gl.FLOAT, data);
+    if (gl.getError() === gl.NO_ERROR) { gl.generateMipmap(gl.TEXTURE_2D_ARRAY); done = gl.getError() === gl.NO_ERROR; }
+  }
+  if (!done) {
+    const data = new Uint8Array(per * 4).fill(128);
+    for (let i = 0; i < 4; i++) if (grey[i]) { const g = grey[i], o = i * per; for (let k = 0; k < per; k++) data[o + k] = Math.round(Math.min(1, Math.max(0, g[k])) * 255); }
+    gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.R8, W, H, 4, 0, gl.RED, gl.UNSIGNED_BYTE, data);
+    gl.generateMipmap(gl.TEXTURE_2D_ARRAY);
+  }
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  lhW = W; lhH = H; lhBits = done ? 16 : 8;
+}
+// (Re)build the height array at the size of the layer stack from the maps in use. Called whenever the stack is (re)built and when a map changes.
+function buildLayerHeights() {
+  const W = varW, H = varH, [gw, gh] = dimsFor(LH_CPU), grey = [null, null, null, null];
+  let any16 = false;
+  try {
+    for (let i = 0; i < 4; i++) {
+      lhFlags[i] = 0; lhGrey[i] = null;
+      if (!lhActive(i)) continue;
+      const g = greyOf(layerH[i].src, W, H);
+      grey[i] = g.f; any16 = any16 || g.bits === 16;
+      lhFlags[i] = 1; lhGrey[i] = { w: gw, h: gh, d: downGrey(g.f, W, H, gw, gh) };
+    }
+  } catch (err) { lhFlags.fill(0); lhGrey.fill(null); grey.fill(null); throw err; }
+  uploadLH(grey, W, H, any16);
+  showLayerHeights();
+}
+function showLayerHeights() {
+  const on = [], wait = [];
+  for (let i = 0; i < 4; i++) {
+    const n = $('tnLH' + i), q = layerH[i];
+    n.classList.remove('warn'); n.hidden = !q;
+    if (!q) { n.textContent = ''; continue; }
+    const b16 = q.src.kind === 'tiff' && q.src.img.bits === 16;
+    n.textContent = q.name + ' · ' + sourceSize(q.src).join('×') + (lhFlags[i] ? ' · ' + (b16 ? (lhBits === 16 ? '16-bit' : '16-bit, reduced to 8') : '8-bit') : ' · not in use: this layer has no uploaded image');
+    (lhFlags[i] ? on : wait).push(i + 1);
+  }
+  $('vinfo').textContent = vinfoBase + (on.length ? ' Height maps on layer' + (on.length > 1 ? 's ' : ' ') + on.join(', ') + '.' : '') +
+    (wait.length ? ' Loaded but not in use (a height map applies to an uploaded image of the same layer): ' + wait.join(', ') + '.' : '');
+}
+async function loadLayerHeight(i, file) {
+  if (!(i >= 0 && i < 4) || !file) return false;
+  const prev = layerH[i];
+  try {
+    const src = await readSource(file);
+    layerH[i] = { src, name: file.name };
+    try { buildLayerHeights(); } catch (err) { layerH[i] = prev; buildLayerHeights(); throw err; }
+  } catch (err) {
+    const n = $('tnLH' + i); n.hidden = false; n.textContent = file.name + ': ' + (err && err.message || err); n.classList.add('warn');
+    if (!/refused/.test(String(err && err.message))) console.warn(err);
+    return false;
+  }
+  syncValues();
+  return true;
+}
+function clearLayerHeight(i) { if (!(i >= 0 && i < 4)) return; layerH[i] = null; buildLayerHeights(); syncValues(); }
 
 /* ======================================================================
    TEXTURE SLOTS (per surface family; they persist across surface switches and are not part of the saved settings).
@@ -1485,7 +1701,7 @@ function buildSlot(key) {
   if (!s.tex) s.tex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, s.tex);
   gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-  let done = false;
+  let done = false, px8 = null;
   if (canvas16) {
     drainGL();
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, W, H, 0, gl.RGBA, gl.FLOAT, f32);
@@ -1497,6 +1713,13 @@ function buildSlot(key) {
     else { const id = fitCanvas(src.el, W, H, plan).getContext('2d').getImageData(0, 0, W, H).data; px = new Uint8Array(id.buffer, id.byteOffset, id.length); }
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, W, H, 0, gl.RGBA, gl.UNSIGNED_BYTE, px);
     gl.generateMipmap(gl.TEXTURE_2D);
+    px8 = px;
+  }
+  if (key === 'height') {          // the CPU grey copy of the medium's height texture (crack steering): LH_CPU on the long side, from whichever raster was uploaded
+    const g = new Float32Array(W * H), a = px8 || f32, k = px8 ? 1 / 255 : 1;
+    for (let i = 0; i < W * H; i++) g[i] = lum(a[4 * i], a[4 * i + 1], a[4 * i + 2]) * k;
+    const [gw, gh] = dimsFor(LH_CPU);
+    medGrey = { w: gw, h: gh, d: downGrey(g, W, H, gw, gh) };
   }
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, d.fitted ? gl.CLAMP_TO_EDGE : gl.REPEAT);
@@ -1531,6 +1754,7 @@ function clearSlot(key) {
   const s = slots[key];
   if (s.tex) { gl.deleteTexture(s.tex); s.tex = null; }
   s.src = null; s.has = false; s.w = s.h = 0;
+  if (key === 'height') medGrey = null;
   showSlot(key); syncValues();
 }
 function buildFittedSlots() { SLOT_KEYS.forEach((k) => { if (SLOT_DEFS[k].fitted && slots[k].src) buildSlot(k); }); }
@@ -1555,8 +1779,12 @@ const idleW = (() => {
 //   edgeW / edgeH  bevel at the layer edge (liquid): width in uv, height 0..1 (-> peak slope, edgeSlope)
 //   th0..th3     layer thicknesses in depth units; dscale  visible depth (depth units -> height) scale
 //   size         the Energy slider (was Drop size); bump  height-texture bump strength; brushTile  brushing-texture repeats across the long side
+//   layerBump    0..2, relief of the per-layer height maps (A6); 1 = the medium bump's range (LH_H)
+//   reliefWear   0..1, erosion x clamp(1 + reliefWear x 2 x (h - 0.5), 0.2, 1.8): ridges wear first (A4; see GLSL_MASK_RELIEF)
+//   reliefCrack  0..1, solids: the crack planner leans each step toward lower relief (A4; see RELIEF_K)
 const ARTIST = { size: 0.5, attack: 0.25, wave: 0.16, rings: 2, speed: 0.30, damp: 0.008, spread: 0.6, lag: 0.6, wear: 0.5,
-                 edgeSharp: 0.8, edgeW: 0.04, edgeH: 0.3, th0: 1, th1: 1, th2: 1, th3: 1, dscale: 0.3, bump: 1, brushTile: 2 };
+                 edgeSharp: 0.8, edgeW: 0.04, edgeH: 0.3, th0: 1, th1: 1, th2: 1, th3: 1, dscale: 0.3, bump: 1, brushTile: 2,
+                 layerBump: 1, reliefWear: 0, reliefCrack: 0 };
 
 // LIQUIDS: material and medium only.
 //   tension      surface tension: h += tension * laplacian(h) once per substep (rounds off fine ripples, max 0.25)
@@ -1681,22 +1909,42 @@ function makeDrop(ev) {
            ero: Math.min(1, Math.max(0.05, ERODE_GAIN * k)),                 // partial erosion: bigger drop, more of a layer
            f0: 1 - (0.06 + 0.94 * clamp01(params.wear)) };                   // feather starts at f0 * radius (0 = from the centre)
 }
-// Strike on a liquid: two entries in the same drop list. (1) the swell: a broad, low wave packet over `area` (a near zero-mean damped
-// cosine, so it leaves no standing pit; wavelength 2.4 sigma), building over Attack + duration, with a wide shallow reveal; (2) the splash:
-// a short ring train (1.5 ring windows, a little shorter than the drop's wavelength) that builds over the strike's own short duration.
-// Radius of the swell grows with area (and slowly with energy); both amplitudes are below a drop's at the same energy, and the swell's slope is
-// several times gentler (it is broad), so a strike reads as one long swell and a few rings where a drop is many tight rings.
-const STRIKE_SWELL_AMP = 0.9, STRIKE_SPLASH_AMP = 0.75, STRIKE_SWELL_ERO = 0.6;
+// Strike on a liquid: two entries in the same drop list, a broad swell and a short splash. Pass 2 fix: a strike read NARROWER than a drop (reviewer, pass 1c:
+// outer ring 268 px against 355 px at 2.5 s, 1024 stage). By 2.5 s the waves are gone (a drop's |h| is down to 0.003 of its start, below the idle ripple); the
+// ring that is still there is the layer-edge lip, the contour where the eroded depth crosses half a layer, and the old strike put that contour where the
+// splash's deep, tight erosion (0.5 over a radius of 0.2) set it, inside the drop's, while the broad swell eroded too little (0.3) to reach half a layer. Now:
+//  (1) the swell is a damped cosine cos(2 pi r / lam) exp(-r^2 / sigma^2) with lam = STRIKE_RHO sigma. Its 2D volume, the integral of r cos(2 pi r / lam) exp(-r^2 / sigma^2)
+//      up to the shader's cut-off at 2.6 sigma, is exactly zero at lam / sigma = 3.40 (the old 2.42 left -26 % of the gaussian's volume, a standing hump). Zero volume =
+//      a broad basin with a raised rim that travels out as one slow, gentle ring, nothing left behind inside. (The field edge and the uneven velocity damping cut a
+//      packet this broad, so the sim keeps a small standing offset, ~0.015 at 2.5 s with the amplitude below: it is flat, has no slope, and the display reads only
+//      the slope, so it is invisible; judge the strike's peak with the field mean subtracted. Known flag: the offset is a steady state of the wave equation and adds
+//      up over many strikes; harmless in the RGBA32F state, a precision risk on the RGBA16F fallback after ~100 strikes.)
+//      sigma = (STRIKE_SIG0 + STRIKE_SIG1 x area) x k^0.25 (k = energy / 0.5), capped at STRIKE_SIG_MAX, and never below the drop's own packet at the same energy and
+//      settings (makeDrop's sigma, up to the cap), so a strike is never narrower than a drop: at area 0.1 and default energy it equals the drop's 0.2, at area 0.5 it is
+//      0.32, at 0.8 0.41 (reveal radius 1.7 sigma: 0.34 / 0.54 / 0.70). The swell builds over Attack + duration and carries the wide, shallow reveal.
+//  (2) the splash is a short ring train, its wavelength the drop's (STRIKE_SPLASH_LAM 1.0; the old 0.75 packed the rings tighter than a drop's, which reads smaller),
+//      1.5 ring windows, built over the strike's own short duration. It is the visible ring; the swell shows as the broad shallow basin around it (0.3 of a drop's
+//      amplitude: at 0.6 s the strike's peak |h| is 0.27x a drop's, at 2.5 s the mean-subtracted peak equals a drop's; 0.02 made the basin invisible).
+// Both amplitudes are well below a drop's at the same energy, so a strike is wider AND lower. The erosion is shared the other
+// way round to before: the swell does most of it (1.05 x the drop's, over a wide plateau, so the half-layer lip is the swell's and grows with area: 0.19 / 0.29 / 0.4
+// at area 0.2 / 0.5 / 0.8, against a drop's 0.175) and the splash adds a smaller dent at the centre (0.5 x): the centre depth is 0.775 x energy-ero, as before (0.8).
+const STRIKE_SWELL_AMP = 0.30, STRIKE_SPLASH_AMP = 0.4;    // wave amplitude as a fraction of the drop's at the same energy (swell: the visible basin; splash: the ring)
+const STRIKE_SWELL_ERO = 1.05, STRIKE_SPLASH_ERO = 0.5;    // erosion depth as a fraction of the drop's at the same energy
+const STRIKE_SIG0 = 0.17, STRIKE_SIG1 = 0.30, STRIKE_SIG_MAX = 0.42;   // swell sigma (long-side units): at area 0, per unit of area, and its cap
+const STRIKE_RHO = 3.40;                                    // swell wavelength / sigma: the zero-volume packet (see above)
+const STRIKE_SPLASH_LAM = 1.0;                              // splash wavelength relative to the drop's at the same energy
 function makeStrike(ev) {
   const k = ev.energy / S_REF, sc = Math.sqrt(k), st = simState();
   const x = ev.x, y = 1 - ev.y;
   const ero = Math.min(1, Math.max(0.05, ERODE_GAIN * k)), f0 = 1 - (0.06 + 0.94 * clamp01(params.wear));
-  const sigS = Math.min(0.42, Math.max(0.04, (0.04 + 0.38 * ev.area) * Math.pow(k, 0.25))), lamS = 2.42 * sigS, attS = params.attack + ev.duration;
+  const sigD = Math.max(params.wave * sc, MIN_LAM) * 0.5 * (params.rings + 0.5);   // the drop's own packet width here (makeDrop)
+  const sigS = Math.max(Math.min(STRIKE_SIG_MAX, Math.max(0.04, (STRIKE_SIG0 + STRIKE_SIG1 * ev.area) * Math.pow(k, 0.25))), Math.min(STRIKE_SIG_MAX, sigD));
+  const lamS = STRIKE_RHO * sigS, attS = params.attack + ev.duration;
   const swell = { x, y, t0: stepCount, amp: -DROP_AMP * k * STRIKE_SWELL_AMP, lam: lamS, sig: sigS, att: attS,
                   Rrev: Math.min(0.7, Math.max(0.04, 1.7 * sigS)), dur: Math.max(0.04, attS + params.lag), c: st.c, ero: ero * STRIKE_SWELL_ERO, f0 };
-  const lamP = Math.max(params.wave * sc * 0.75, MIN_LAM), sigP = lamP * 0.5 * 2.0, attP = Math.min(params.attack, Math.max(0.03, ev.duration));
+  const lamP = Math.max(params.wave * sc * STRIKE_SPLASH_LAM, MIN_LAM), sigP = lamP * 0.5 * 2.0, attP = Math.min(params.attack, Math.max(0.03, ev.duration));
   const splash = { x, y, t0: stepCount, amp: -DROP_AMP * k * STRIKE_SPLASH_AMP, lam: lamP, sig: sigP, att: attP,
-                   Rrev: Math.min(0.7, Math.max(0.04, 1.7 * sigP)), dur: Math.max(0.04, attP + params.lag), c: st.c, ero, f0 };
+                   Rrev: Math.min(0.7, Math.max(0.04, 1.7 * sigP)), dur: Math.max(0.04, attP + params.lag), c: st.c, ero: ero * STRIKE_SPLASH_ERO, f0 };
   return [swell, splash];
 }
 const makeDrops = (ev) => (ev.type === 'strike' ? makeStrike(ev) : [makeDrop(ev)]);
@@ -1790,6 +2038,54 @@ function frontDist(t, v, att) {
   return v * att * (x * x * x - 0.5 * x * x * x * x);
 }
 
+/* ----------------------------------------------------------------------
+   RELIEF COUPLING, CPU side (A4: cracks prefer valleys). `reliefCrack` (0..1, solids) makes the crack planner lean toward lower relief: at every
+   step of the random walk, -reliefCrack x RELIEF_K x grad(h) is ADDED to the unit step direction before it is normalised, and the walk keeps the
+   steered heading (so a crack that has turned into a valley goes on along it). h is the COMBINED RELIEF of GLSL_MASK_RELIEF (the same definition:
+   the mean of the maps that are present: the layer at the surface at the impact point, crossfaded with the next, and the medium's height texture),
+   read from the CPU grey copies (LH_CPU on the long side); grad is per long-side unit, by central differences over one CPU texel.
+   The layer is the one at the surface of the IMPACT POINT when the crack is planned: the target erosion depth of that mask texel is read back
+   (one texel, only when reliefCrack > 0 and a map exists), so a crack planned on an eroded patch follows that layer's valleys. The steer uses
+   only the height data and the seeded walk: no new random draws, so at reliefCrack 0 (no steer at all) every crack is the old one, bit for bit.
+   RELIEF_K: a 50 %-contrast valley field (h = 0.5 + 0.25 sin, period 1/4 of the long side) has |grad h| up to 6.3 per long-side unit; with the default
+   step (~0.05) K = 0.10 puts the steer at ~0.6 of the unit step at the walls of such a valley at reliefCrack 1: a crack that meets a valley wall turns
+   about 30 degrees toward the floor per step and settles into it, while the walk's own random turning (and the steer's cap STEER_MAX < 1, which
+   forbids a U-turn) keeps it from running straight along the floor. Broader valleys (|grad| 3) steer ~0.3 per step: a lean, not a rail.
+   ---------------------------------------------------------------------- */
+const RELIEF_K = 0.10, STEER_MAX = 0.9;
+function bilGrey(G, u, v) {                 // G = { w, h, d } grey copy (row 0 = image top); u, v in uv, v up
+  const fx = u * G.w - 0.5, fy = (1 - v) * G.h - 0.5, x0 = Math.floor(fx), y0 = Math.floor(fy), tx = fx - x0, ty = fy - y0;
+  const at = (x, y) => G.d[Math.min(G.h - 1, Math.max(0, y)) * G.w + Math.min(G.w - 1, Math.max(0, x))];
+  return (at(x0, y0) * (1 - tx) + at(x0 + 1, y0) * tx) * (1 - ty) + (at(x0, y0 + 1) * (1 - tx) + at(x0 + 1, y0 + 1) * tx) * ty;
+}
+function maskDepthAt(u, v) {                // target erosion depth (depth units) of the mask texel at uv (v up); 0 if the read-back is not possible
+  const ix = Math.min(fieldW - 1, Math.max(0, Math.floor(u * fieldW))), iy = Math.min(fieldH - 1, Math.max(0, Math.floor(v * fieldH))), a = new Float32Array(4);
+  drainGL();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, mask.cur.fbo);
+  gl.readPixels(ix, iy, 1, 1, gl.RGBA, gl.FLOAT, a);
+  return gl.getError() === gl.NO_ERROR ? a[0] : 0;
+}
+// The combined relief function h(px, py) (physical long-side units, y up) for a crack planned at uv (u, v), or null when no map applies there.
+function makeRelief(u, v) {
+  const hm = family === 'solid' && medGrey ? 1 : 0;
+  if (!lhAny() && !hm) return null;
+  const d = maskDepthAt(u, v), th = [params.th0, params.th1, params.th2, params.th3];
+  let p = 0, c = 0;
+  for (let k = 0; k < 4; k++) { p += Math.min(1, Math.max(0, (d - c) / th[k])); c += th[k]; }
+  p = Math.min(variantN, Math.max(0, p));
+  const fi = Math.floor(p), fb = Math.min(fi + 1, variantN), m = sstep(0.12, 0.88, p - fi);
+  const la = fi < variantN && lhFlags[Math.min(fi, 3)] ? lhGrey[Math.min(fi, 3)] : null;
+  const lb = fb < variantN && lhFlags[Math.min(fb, 3)] ? lhGrey[Math.min(fb, 3)] : null;
+  const wL = (1 - m) * (la ? 1 : 0) + m * (lb ? 1 : 0);
+  if (wL + hm <= 0) return null;
+  return (px, py) => {
+    const uu = px / ASPX, vv = py / ASPY;
+    const dL = (1 - m) * (la ? bilGrey(la, uu, vv) - 0.5 : 0) + m * (lb ? bilGrey(lb, uu, vv) - 0.5 : 0);
+    const dM = hm ? bilGrey(medGrey, uu, vv) - 0.5 : 0;
+    return 0.5 + (dL + dM) / Math.max(wL + hm, 1);
+  };
+}
+
 // One random-walk polyline -> dense smoothed samples.
 function buildPoly(rnd, g, x0, y0, ang0, len, gen, off, spd, w0, ewBase) {
   const bx = [x0], by = [y0];
@@ -1799,7 +2095,16 @@ function buildPoly(rnd, g, x0, y0, ang0, len, gen, off, spd, w0, ewBase) {
     if (d + st > len) st = len - d;
     drift = drift * 0.7 + (rnd() - 0.5) * 0.22;
     ang += (rnd() + rnd() + rnd() - 1.5) * 2 * g.sigma + drift;
-    let nx = x + Math.cos(ang) * st, ny = y + Math.sin(ang) * st;
+    let dx = Math.cos(ang), dy = Math.sin(ang);
+    if (g.rel) {                                // Relief crack: lean toward lower relief (see RELIEF_K); the steered heading is kept
+      const E = 1 / LH_CPU;
+      let sx = -g.rc * RELIEF_K * (g.rel(x + E, y) - g.rel(x - E, y)) / (2 * E), sy = -g.rc * RELIEF_K * (g.rel(x, y + E) - g.rel(x, y - E)) / (2 * E);
+      const sl = Math.hypot(sx, sy);
+      if (sl > STEER_MAX) { sx *= STEER_MAX / sl; sy *= STEER_MAX / sl; }
+      dx += sx; dy += sy;
+      const dl = Math.hypot(dx, dy); dx /= dl; dy /= dl; ang = Math.atan2(dy, dx);
+    }
+    let nx = x + dx * st, ny = y + dy * st;
     const rr = Math.hypot(nx - g.ox, ny - g.oy);
     let last = false;
     if (rr > g.reach) {                         // maximum reach (Spread): clip the step at the boundary and stop
@@ -1978,7 +2283,7 @@ function spawnCracks(ev) {
   const reach = params.spread >= SPREAD_OFF - 1e-9 ? 1.5 : 0.5 * params.spread;
   const stepL = Math.min(0.12, Math.max(0.012, params.wave * 0.3));
   const sigma = Math.min(0.6, 0.30 * Math.sqrt(stepL / 0.048) * (0.55 + 0.45 * Math.min(2, params.wave / 0.16)));
-  const g = { ox, oy, reach, stepL, sigma };
+  const rc = params.reliefCrack, g = { ox, oy, reach, stepL, sigma, rc, rel: rc > 0 ? makeRelief(ev.x, 1 - ev.y) : null };   // rel: the relief at the layer under the impact (null = no steering)
   let nRays = Math.round(tabAt(RAY_TAB, s) + (rnd() - 0.5) * 1.8);
   nRays = Math.max(1, Math.min(12, nRays));
   if (s < 0.2) nRays = Math.min(nRays, 2); else if (s >= FRAG_S0) nRays = Math.max(nRays, 7);
@@ -2195,6 +2500,7 @@ function maskPass() {
   bindTex(0, gl.TEXTURE_2D, mask.cur.tex, P.u.uIn);
   gl.uniform4fv(P.u.uMa, aMa); gl.uniform4fv(P.u.uMb, aMb); gl.uniform4fv(P.u.uMc, aMc);
   gl.uniform1f(P.u.uMax, maxDepth()); gl.uniform1f(P.u.uStep, FOLLOW * DT); gl.uniform2f(P.u.uSz, fieldW, fieldH); gl.uniform2f(P.u.uAsp, ASPX, ASPY);
+  setReliefMask(P, 1, 2);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   mask.flip();
 }
@@ -2203,7 +2509,8 @@ function maskSolidPass() {
   const P = pass(progMaskS, mask.nxt);
   bindTex(0, gl.TEXTURE_2D, mask.cur.tex, P.u.uIn);
   bindTex(1, gl.TEXTURE_2D, incMap.tex, P.u.uInc);
-  gl.uniform1f(P.u.uMax, maxDepth()); gl.uniform1f(P.u.uStep, FOLLOW * DT);
+  gl.uniform1f(P.u.uMax, maxDepth()); gl.uniform1f(P.u.uStep, FOLLOW * DT); gl.uniform2f(P.u.uSz, fieldW, fieldH);
+  setReliefMask(P, 2, 3);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   mask.flip();
 }
@@ -2298,6 +2605,25 @@ function setLightUniforms(P) {
   gl.uniform4f(P.u.uTh, params.th0, params.th1, params.th2, params.th3);
   gl.uniform1f(P.u.uEdgeSharp, params.edgeSharp); gl.uniform1f(P.u.uLipTex, Math.pow(16, 1 - params.edgeSharp));
 }
+// Relief uniforms. Display shaders: the height array on `unit`, the layer flags, Layer bump. Mask shaders: the array on `unit`, the medium's height
+// texture (solids) on `unitM`, the stack (thicknesses, count), Relief wear (0 unless some height data exists, so the mask pass costs nothing), and the LODs
+// that match the height maps to the mask's texel size (the array is 2x the mask at 1024 / 512, so LOD 1).
+const reliefOn = () => lhAny() || (family === 'solid' && slots.height.has);
+function setReliefDisplay(P, unit) {
+  bindTex(unit, gl.TEXTURE_2D_ARRAY, varHgtTex, P.u.uLHgt);
+  gl.uniform4f(P.u.uHasLH, lhFlags[0], lhFlags[1], lhFlags[2], lhFlags[3]);
+  gl.uniform1f(P.u.uAnyLH, lhAny() ? 1 : 0); gl.uniform1f(P.u.uLBump, params.layerBump); gl.uniform2f(P.u.uLHSz, lhW, lhH);
+}
+function setReliefMask(P, unit, unitM) {
+  const hm = family === 'solid' && slots.height.has;
+  bindTex(unit, gl.TEXTURE_2D_ARRAY, varHgtTex, P.u.uLHgt);
+  bindTex(unitM, gl.TEXTURE_2D, hm ? slots.height.tex : dummyTex, P.u.uHgtM);
+  gl.uniform4f(P.u.uHasLH, lhFlags[0], lhFlags[1], lhFlags[2], lhFlags[3]);
+  gl.uniform4f(P.u.uTh, params.th0, params.th1, params.th2, params.th3); gl.uniform1f(P.u.uNImg, variantN);
+  gl.uniform1f(P.u.uRWear, reliefOn() ? params.reliefWear : 0);
+  gl.uniform1f(P.u.uLHLod, Math.max(0, Math.log2(lhW / fieldW)));
+  gl.uniform1f(P.u.uHasHM, hm ? 1 : 0); gl.uniform1f(P.u.uHMLod, hm ? Math.max(0, Math.log2(slots.height.w / fieldW)) : 0);
+}
 
 // edgeHeight 0..1 -> peak bevel slope (wave-slope units; the reflection normal uses 16x the slope): tan(45 deg) / 16 at 1,
 // tan(25 deg) / 16 at the default 0.3 (exponent ln(tan 25 deg) / ln 0.3)
@@ -2334,6 +2660,7 @@ function render() {
   gl.uniform1f(P.u.uHasHdri, slots.hdri.has ? 1 : 0); gl.uniform1f(P.u.uHdriYaw, (light.az - lightRef.az) / DEG);
   gl.uniform1f(P.u.uHdriLod, clamp(0.5 * Math.log2(520 / L.specPow), 0, 3));   // a rougher liquid reads a blurrier HDRI (mercury sharp, lead soft)
   setLightUniforms(P);
+  setReliefDisplay(P, 5);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
 }
 
@@ -2359,6 +2686,7 @@ function renderSolid(w, h) {
   bindTex(4, gl.TEXTURE_2D, slotTex('albedo'), P.u.uAlbT); bindTex(5, gl.TEXTURE_2D, slotTex('height'), P.u.uHgtT); bindTex(6, gl.TEXTURE_2D, slotTex('roughness'), P.u.uRghT);
   gl.uniform1f(P.u.uHasAlb, slots.albedo.has ? 1 : 0); gl.uniform1f(P.u.uHasHgt, slots.height.has ? 1 : 0); gl.uniform1f(P.u.uHasRgh, slots.roughness.has ? 1 : 0);
   gl.uniform1f(P.u.uBump, params.bump); gl.uniform2f(P.u.uHgtSz, Math.max(1, slots.height.w), Math.max(1, slots.height.h));
+  setReliefDisplay(P, 7);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
 }
 
@@ -2396,10 +2724,12 @@ const fmt = { reflect: (v) => v.toFixed(2), refract: (v) => v.toFixed(2), damp: 
               spread: (v) => (v >= SPREAD_OFF - 1e-9 ? 'off' : v.toFixed(2)), lag: (v) => v.toFixed(2), wear: (v) => v.toFixed(2),
               edgeSharp: (v) => v.toFixed(2), edgeW: (v) => v.toFixed(4), edgeH: (v) => v.toFixed(2),
               th0: (v) => v.toFixed(2), th1: (v) => v.toFixed(2), th2: (v) => v.toFixed(2), th3: (v) => v.toFixed(2), dscale: (v) => v.toFixed(2),
-              bump: (v) => v.toFixed(2), brushTile: (v) => v.toFixed(2) + '×' };
+              bump: (v) => v.toFixed(2), brushTile: (v) => v.toFixed(2) + '×',
+              layerBump: (v) => v.toFixed(2), reliefWear: (v) => v.toFixed(2), reliefCrack: (v) => v.toFixed(2) };
 const ids = { size: 'Size', attack: 'Attack', wave: 'Wave', rings: 'Rings', speed: 'Speed', damp: 'Damp', spread: 'Spread',
               lag: 'Lag', wear: 'Wear', edgeSharp: 'ESharp', edgeW: 'EW', edgeH: 'EH', th0: 'Th0', th1: 'Th1', th2: 'Th2', th3: 'Th3', dscale: 'DScale',
-              reflect: 'Reflect', refract: 'Refract', idle: 'Idle', time: 'Time', bump: 'Bump', brushTile: 'Tile' };
+              reflect: 'Reflect', refract: 'Refract', idle: 'Idle', time: 'Time', bump: 'Bump', brushTile: 'Tile',
+              layerBump: 'LBump', reliefWear: 'RWear', reliefCrack: 'RCrack' };
 
 const r3 = (v) => Math.round(v * 1000) / 1000;
 const seedVal = () => { const v = parseInt($('nSeed').value, 10); return Number.isFinite(v) ? Math.max(0, Math.min(999999, v)) : 1; };
@@ -2434,6 +2764,8 @@ function readout() {
     aspect: { preset: aspect.preset, w: aspect.w, h: aspect.h }, fit: { mode: fit.mode, x: fit.x, y: fit.y },
     render: { w: renderSet.w, h: renderSet.h, fps: renderSet.fps, duration: renderSet.duration, label: renderSet.label, lock: renderSet.lock },
     bumpStrength: params.bump, brushTile: params.brushTile,
+    layerBump: params.layerBump, reliefWear: params.reliefWear, reliefCrack: params.reliefCrack,
+    layerHeights: lhFlags.map((f) => f > 0),     // which layers carry a height map in use (the maps themselves are not saved)
     textures: { albedo: slots.albedo.has, height: slots.height.has, roughness: slots.roughness.has, brushing: slots.brushing.has, hdri: slots.hdri.has } });   // which slots are filled, not the pixels
   return o;
 }
@@ -2498,6 +2830,7 @@ function applySurface(key) {
   document.querySelectorAll('[data-surface]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.surface === key ? 'true' : 'false'));
   $('sDamp').disabled = isSolid; $('cDamp').classList.toggle('off', isSolid); $('dnote').hidden = !isSolid;
   ['cEW', 'cEH'].forEach((id) => $(id).classList.toggle('off', isSolid)); $('enote').hidden = !isSolid;   // the layer-edge bevel is a liquid-shader term
+  $('cRCrack').classList.toggle('off', !isSolid); $('sRCrack').disabled = !isSolid; $('rcnote').hidden = isSolid;   // relief crack steers the crack planner: solids only
   $('oSpeed').textContent = fmt.speed(params.speed);
   $('fnote').textContent = isSolid ? 'Solid surface: a drop opens a crack cluster instead of a wave. Cracks grow, never heal, and erode along themselves.' : '';
   $('advNum').textContent = advText();
@@ -2715,6 +3048,11 @@ document.querySelectorAll('input[data-slot]').forEach((inp) => inp.addEventListe
   if (f) await loadSlot(inp.dataset.slot, f);
 }));
 document.querySelectorAll('[data-clear]').forEach((b) => b.addEventListener('click', () => clearSlot(b.dataset.clear)));
+document.querySelectorAll('input[data-lh]').forEach((inp) => inp.addEventListener('change', async (e) => {
+  const f = e.target.files && e.target.files[0]; e.target.value = '';
+  if (f) await loadLayerHeight(parseInt(inp.dataset.lh, 10), f);
+}));
+document.querySelectorAll('[data-lhclear]').forEach((b) => b.addEventListener('click', () => clearLayerHeight(parseInt(b.dataset.lhclear, 10))));
 
 // ---- settings file. Everything the readout shows plus `version`; the layer images and the textures are not saved.
 const SETTINGS_VERSION = 1;
@@ -2733,7 +3071,10 @@ function saveSettings() {
 }
 const SET_NAMES = { size: 'dropSize', attack: 'attack', wave: 'wavelength', rings: 'ringCount', speed: 'waveSpeed', damp: 'damping', spread: 'spread', lag: 'revealLag',
                     wear: 'wearSoftness', edgeSharp: 'edgeSharpness', edgeW: 'edgeWidth', edgeH: 'edgeHeight', dscale: 'depthScale',
-                    reflect: 'reflect', refract: 'refract', idle: 'idle', time: 'timeScale', bump: 'bumpStrength', brushTile: 'brushTile' };
+                    reflect: 'reflect', refract: 'refract', idle: 'idle', time: 'timeScale', bump: 'bumpStrength', brushTile: 'brushTile',
+                    layerBump: 'layerBump', reliefWear: 'reliefWear', reliefCrack: 'reliefCrack' };
+// keys added after the first settings files: a file without them (older, same version 1: the format only gained keys) loads them at their defaults
+const SET_ADDED = ['layerBump', 'reliefWear', 'reliefCrack'];
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
 function setSlider(k, v) {                                   // a slider by key, through its own input handler; the value is clamped to the slider's range
   if (!isNum(v)) return false;
@@ -2762,6 +3103,7 @@ function applySettings(o, fname) {
   // sliders (after the surface: choosing a surface resets reflect / refract / idle / time)
   Object.keys(SET_NAMES).forEach((k) => {
     const name = SET_NAMES[k]; let v = o[name];
+    if (v === undefined && SET_ADDED.indexOf(k) >= 0) v = ARTIST[k];      // an older file: the relief sliders were not there, so they are at their defaults
     if (v === undefined || (name === 'damping' && v === null)) return;
     if (k === 'spread' && v === 'off') v = SPREAD_OFF;
     if (!setSlider(k, v)) skipped.push(name);
@@ -2832,6 +3174,9 @@ window.XANADU = {
   impact, setImpactType, resolveEvent,
   get ignoredEvents() { return ignoredEvents; },
   slots, loadTexture: loadSlot, clearTexture: clearSlot,
+  loadLayerHeight, clearLayerHeight,
+  get layerHeights() { return lhFlags.slice(); },                                                   // which layers carry a height map in use
+  get cracks() { return cdrops; },                                                                  // test hook: the planned crack clusters (polylines)
   settingsFile, applySettings, saveSettings,
   step(n) { for (let i = 0; i < n; i++) substep(); },                                              // test hooks: n substeps (1/60 s each) ...
   fire(x, y) { manualQ.push({ ev: { t: stepCount * DT, x, y, energy: params.size }, scaled: false }); },   // ... and an impact at (x, y), as a tap
@@ -2840,6 +3185,12 @@ window.XANADU = {
     gl.bindFramebuffer(gl.FRAMEBUFFER, mask.cur.fbo);
     if (f32) gl.readPixels(0, 0, fieldW, fieldH, gl.RGBA, gl.FLOAT, a);
     return { w: fieldW, h: fieldH, depth: Float32Array.from({ length: fieldW * fieldH }, (_, i) => a[i * 4 + 1]) };
+  },
+  readWave() {                       // test hook: the wave height field, one float per texel, simW x simH (needs the 32-bit wave state; zeros elsewhere)
+    const a = new Float32Array(simW * simH * 4);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, state.cur.fbo);
+    if (f32) gl.readPixels(0, 0, simW, simH, gl.RGBA, gl.FLOAT, a);
+    return { w: simW, h: simH, height: Float32Array.from({ length: simW * simH }, (_, i) => a[i * 4]) };
   },
   get sources() { return sources; },
   setEvents(list) { EVENTS = list.map(dropFromEvent).sort((a, b) => a.t - b.t); restart(); },

@@ -30,7 +30,7 @@ Every event carries four medium-independent numbers; the type is a preset of the
 
 ## Pieces mapped so far
 
-- *Für Alina* (piano) — drop; strike for the rare heavy chords. Liquid medium (advisor's view).
+- *Für Alina* (piano) — drop; strike for the rare heavy chords. **Liquid medium (ruling by Bekir, 1 Nov 2026, afternoon).**
 - *Cantus in memoriam Benjamin Britten* (strings + bell) — **sweep**, each string group one sweep at its own speed, same direction; bell = drop/strike. Granular medium (advisor's view).
 - *Spiegel im Spiegel* — piano triplets = drops (drizzle), violin = blow/flow. Open.
 
