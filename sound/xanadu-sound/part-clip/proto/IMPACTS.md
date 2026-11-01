@@ -26,7 +26,7 @@ Every event carries four medium-independent numbers; the type is a preset of the
 |---|---|---|---|---|---|
 | liquid | ✓ | ✓ | ✓ (skims the film, exposes below briefly, pile = ridge) | ≈ flow | ✓ |
 | solid | ✓ | ✓ | ✓ (scrapes, pile = swarf at the edge) | ✓ (flakes/plates) | ✓ slow |
-| granular | ✓ | ✓ | ✓ (the natural one) | ✓ (the natural one) | ✓ |
+| granular | ✓ crater + rim | ✓ wide crater + rim + thrown grains | ✓ (the natural one: grains drawn in, pile at the edge) | ✓ (the natural one: grains carried downwind, lee piles) | ✓ grains slide with the water |
 
 ## Pieces mapped so far
 
@@ -36,7 +36,7 @@ Every event carries four medium-independent numbers; the type is a preset of the
 
 ## Passes (replaces PLAN-v2 §C rows 3–4)
 
-- Pass 3: granular medium with drop + strike.
+- Pass 3a: granular medium core (ruling 17:08: the image is the sand — PLAN-v2 A9): deposit field, repose, top-grain colour, drop + strike (crater + rim + thrown grains). Pass 3b: blow (wind) for granular — the medium's natural impact.
 - Pass 4: sweep for all three media.
 - Pass 5: blow + flow for all three media.
 - Then B5 (dispersive waves, Opus) and B2/B3 (render + events).
