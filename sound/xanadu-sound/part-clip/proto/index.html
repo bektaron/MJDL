@@ -11,7 +11,7 @@ html,body{margin:0;overflow-x:hidden;background:var(--bg);color:var(--fg);
   font:14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   -webkit-text-size-adjust:100%}
 .app{display:flex;flex-direction:column;min-height:100vh;min-height:100svh}
-.stage{position:relative;width:min(100%,100vh);width:min(100%,100svh);aspect-ratio:1/1;margin:0 auto;background:#1a1b1e}
+.stage{--ar:1;position:relative;width:min(100%,calc(100vh * var(--ar)));width:min(100%,calc(100svh * var(--ar)));aspect-ratio:var(--ar);margin:0 auto;background:#1a1b1e}
 canvas{display:block;width:100%;height:100%;touch-action:manipulation}
 .hud{position:absolute;left:10px;top:8px;font-size:12px;letter-spacing:.04em;color:#e8eaee;
   text-shadow:0 0 4px rgba(0,0,0,.8),0 0 2px rgba(0,0,0,.9);font-variant-numeric:tabular-nums;pointer-events:none}
@@ -41,7 +41,13 @@ footer{padding:14px 0 0;color:var(--dim);font-size:11.5px;letter-spacing:.03em;t
 .row.wrap{flex-wrap:wrap}
 .row.wrap button{flex:1 1 calc(33% - 6px)}
 .ctl.rnd{grid-template-columns:92px 1fr 92px}
-input[type=number]{width:100%;min-height:36px;font:inherit;font-size:15px;color:var(--fg);background:#101114;border:1px solid #30343a;border-radius:8px;padding:4px 8px}
+input[type=number],input[type=text],select{width:100%;min-height:36px;font:inherit;font-size:15px;color:var(--fg);background:#101114;border:1px solid #30343a;border-radius:8px;padding:4px 8px}
+.row.asp{flex-wrap:wrap}
+.row.asp button{flex:1 1 calc(20% - 7px);min-width:0;padding:11px 2px;font-size:14px}
+.row.asp.fit button{flex:1 1 calc(33% - 6px)}
+.ctl.two{grid-template-columns:92px 1fr 1fr}
+.ctl.wide{grid-template-columns:92px 1fr}
+.note.warn{color:#e8b4b4}
 .row.liq{flex-wrap:wrap}
 .row.liq button{flex:1 1 calc(50% - 4px)}
 button[aria-pressed=true]{background:#2a2f38;border-color:#8a96aa;color:#fff}
@@ -56,7 +62,7 @@ pre#advNum{margin:0 0 8px;padding:10px;font:12px/1.5 ui-monospace,SFMono-Regular
   background:#101114;border:1px solid #30343a;border-radius:8px;white-space:pre-wrap;user-select:text;-webkit-user-select:text}
 @media (min-aspect-ratio:1/1){
   .app{flex-direction:row;align-items:flex-start;justify-content:center}
-  .stage{width:min(100vh,calc(100vw - 340px));width:min(100svh,calc(100vw - 340px));margin:0}
+  .stage{width:min(calc(100vh * var(--ar)),calc(100vw - 340px));width:min(calc(100svh * var(--ar)),calc(100vw - 340px));margin:0}
   .panel{width:340px;max-height:100vh;max-height:100svh;overflow:auto;margin:0}
 }
 </style>
@@ -91,6 +97,25 @@ pre#advNum{margin:0 0 8px;padding:10px;font:12px/1.5 ui-monospace,SFMono-Regular
         <button class="sm" type="button" data-surface="bronze" aria-pressed="false">Tarnished bronze</button>
       </div>
       <p class="note" id="fnote"></p>
+      <div class="grp">Aspect (a change rebuilds the fields and restarts the piece)</div>
+      <div class="row asp" id="aspRow">
+        <button class="sm" type="button" data-aspect="1:1" aria-pressed="true">1:1</button>
+        <button class="sm" type="button" data-aspect="16:9" aria-pressed="false">16:9</button>
+        <button class="sm" type="button" data-aspect="9:16" aria-pressed="false">9:16</button>
+        <button class="sm" type="button" data-aspect="4:5" aria-pressed="false">4:5</button>
+        <button class="sm" type="button" data-aspect="21:9" aria-pressed="false">21:9</button>
+      </div>
+      <div class="ctl two"><label for="nAspW">Custom W : H</label><input id="nAspW" type="number" min="1" max="100000" step="any" value="1" inputmode="decimal"><input id="nAspH" type="number" min="1" max="100000" step="any" value="1" inputmode="decimal" aria-label="Aspect height"></div>
+      <p class="note" id="anote">Any W : H from 1 : 4 to 4 : 1. The simulation keeps ripples, cracks and edges round at every ratio.</p>
+      <div class="grp">Image fit (all layers)</div>
+      <div class="row asp fit" id="fitRow">
+        <button class="sm" type="button" data-fit="cover" aria-pressed="true">Cover</button>
+        <button class="sm" type="button" data-fit="contain" aria-pressed="false">Contain</button>
+        <button class="sm" type="button" data-fit="stretch" aria-pressed="false">Stretch</button>
+      </div>
+      <div class="ctl"><label for="sFX">Offset x</label><input id="sFX" type="range" min="-1" max="1" step="0.01" value="0"><output id="oFX"></output></div>
+      <div class="ctl"><label for="sFY">Offset y</label><input id="sFY" type="range" min="-1" max="1" step="0.01" value="0"><output id="oFY"></output></div>
+      <p class="note" id="fitnote">Applies to uploaded images. Offset: -1 = left / top edge of the image, +1 = right / bottom, 0 = centred (no effect on Stretch). The procedural placeholders are drawn at the canvas aspect.</p>
       <div class="grp">Override (a surface change resets these)</div>
       <div class="ctl"><label for="sReflect">Reflect</label><input id="sReflect" type="range" min="0" max="1" step="0.01" value="0.55"><output id="oReflect"></output></div>
       <div class="ctl"><label for="sRefract">Refract</label><input id="sRefract" type="range" min="0" max="3" step="0.05" value="0.9"><output id="oRefract"></output></div>
@@ -119,11 +144,12 @@ pre#advNum{margin:0 0 8px;padding:10px;font:12px/1.5 ui-monospace,SFMono-Regular
       <div class="ctl" id="cEH"><label for="sEH">Edge height</label><input id="sEH" type="range" min="0" max="1" step="0.01" value="0.3"><output id="oEH"></output></div>
       <p class="note" id="enote" hidden>edge width / height shape the bevel of liquid surfaces only</p>
       <div class="row" style="margin-top:8px">
-        <label class="filebtn" for="fFiles">Upload 1–4 images</label>
-        <input id="fFiles" type="file" accept="image/*" multiple>
+        <label class="filebtn" for="fFiles" title="PNG, JPEG or TIFF (8- or 16-bit; TIFF: uncompressed or LZW, RGB or grey). A 16-bit PNG is read through the browser at 8 bits per channel; a 16-bit TIFF is read at full depth.">Upload 1–4 images</label>
+        <input id="fFiles" type="file" accept="image/*,.tif,.tiff,.png,.jpg,.jpeg" multiple>
         <button id="bProc" type="button">Procedural</button>
       </div>
       <p class="note" id="vinfo">Variants: 4 procedural placeholders, then white.</p>
+      <p class="note warn" id="vmsg" role="alert" hidden></p>
       <div class="grp">Layer thickness (depth units)</div>
       <div class="ctl"><label for="sTh0">Layer 1</label><input id="sTh0" type="range" min="0.2" max="3" step="0.05" value="1"><output id="oTh0"></output></div>
       <div class="ctl"><label for="sTh1">Layer 2</label><input id="sTh1" type="range" min="0.2" max="3" step="0.05" value="1"><output id="oTh1"></output></div>
@@ -137,6 +163,13 @@ pre#advNum{margin:0 0 8px;padding:10px;font:12px/1.5 ui-monospace,SFMono-Regular
       <div class="ctl"><label for="sLK">Colour temp.</label><input id="sLK" type="range" min="2000" max="10000" step="100" value="6500"><output id="oLK"></output></div>
       <div class="ctl"><label for="sLAmb">Ambient</label><input id="sLAmb" type="range" min="0" max="1" step="0.01" value="0.55"><output id="oLAmb"></output></div>
       <p class="note">Azimuth: direction the light comes from, 0° right · 90° top · 180° left · 270° bottom. Azimuth, elevation and ambient start from the surface's own light until moved.</p>
+      <div class="grp">Render (settings only, nothing is rendered yet)</div>
+      <div class="ctl two"><label for="nRW">Width × height</label><input id="nRW" type="number" min="16" max="3840" step="2" value="1920" inputmode="numeric"><input id="nRH" type="number" min="16" max="3840" step="2" value="1080" inputmode="numeric" aria-label="Render height"></div>
+      <label class="tog" for="tRLock"><input id="tRLock" type="checkbox" checked> Lock to the aspect <span class="dimtxt">(applies when the aspect or one side changes)</span></label>
+      <div class="ctl rnd"><label for="selFps">Frame rate</label><select id="selFps"><option value="24">24</option><option value="25" selected>25</option><option value="30">30</option><option value="60">60</option></select><output>fps</output></div>
+      <div class="ctl rnd"><label for="nRDur">Duration (s)</label><input id="nRDur" type="number" min="1" max="86400" step="1" value="647" inputmode="numeric"><output id="oRDur"></output></div>
+      <div class="ctl wide"><label for="tRLabel">Label</label><input id="tRLabel" type="text" maxlength="80" value="" autocomplete="off" placeholder="free text"></div>
+      <p class="note" id="rnote"></p>
     </details>
     <details open>
       <summary>Values</summary>
@@ -156,8 +189,9 @@ pre#advNum{margin:0 0 8px;padding:10px;font:12px/1.5 ui-monospace,SFMono-Regular
    Design: docs/XANADU-SOUND-project.md section 10 (First design + Realisation notes).
    ====================================================================== */
 
-const GRID     = 256;       // heightfield resolution (256 or 512)
-const VAR_RES  = 512;       // each profile variant, square
+const GRID     = 256;       // heightfield resolution, long side (256 or 512); the short side follows the aspect
+const VAR_RES  = 512;       // each procedural placeholder variant, long side (the short side follows the aspect)
+const VAR_UP   = 1024;      // each uploaded image, long side
 const DT       = 1 / 60;    // fixed substep (s)
 const ITER_MAX = 6;         // max wave iterations per substep (chosen from waveSpeed)
 const CFL      = 0.7;       // max cells travelled per iteration; C2 = CFL^2 = 0.49 < 0.5 (2D stability limit)
@@ -165,10 +199,11 @@ const MAXSTEPS = 32;        // catch-up cap per frame (sim slows instead of free
 const DURATION = 60;        // length of the synthetic event list (s)
 const FOLLOW   = 6.0;       // shown erosion value follows the target at most this fast (depth units/s); the lag itself is the revealLag slider
 const ERODE_GAIN = 0.5;     // erosion at the drop centre = ERODE_GAIN * drop-size ratio, clamped to 0.05..1 depth units (so one default drop is half a default layer)
-const FIELD_RES = 512;      // erosion / mask field (square). Falls back to GRID where MAX_TEXTURE_SIZE < 4096 or the float target fails at this size; see `fieldRes`
+const FIELD_RES = 512;      // erosion / mask field, long side. Falls back to GRID where MAX_TEXTURE_SIZE < 4096 or the float target fails at this size; see `fieldRes`
 const DEPTH_UNIT = 0.0133;  // visible depth (uv) of one depth unit at Depth scale = 1; the default scale 0.3 makes one layer ~0.004 uv, the depth of a spall footprint
 const DEPTH_G = 0.0015;     // liquid: slope per uv of (depth scale x depth), in the units of the wave slope field
-const CRACK_RES = 512;      // crack map resolution (512 or 256)
+const CRACK_RES = 512;      // crack map resolution, long side (512 or 256)
+const CANVAS_MAX = 2048;    // on-screen backing store, long side
 const MAXD     = 16;        // drops kept alive at once (impulse, spread and reveal are per drop)
 const SIM_LIFE = 20;        // seconds a drop stays in the list (spread reference + reveal window)
 const SPREAD_OFF = 2.0;     // spread slider maximum = off
@@ -181,6 +216,21 @@ const SURFACE_TONE = [140, 144, 150];   // ground colour of variants; letterbox 
 
 const $ = (id) => document.getElementById(id);
 const clamp01 = (x) => Math.min(1, Math.max(0, x));
+
+/* ======================================================================
+   ASPECT. The canvas is W : H (any ratio from 1:4 to 4:1; 1:1 is the default and the original behaviour). Positions of events and taps stay
+   normalised (0..1 across the canvas). Everything that is a length (ripple radius and wavelength, border sponge, crack length and width,
+   feather, bevel, noise, shadow reach) is measured in LONG-SIDE units: (x * ASPX, y * ASPY) with ASPX x ASPY = (1, 1/AR) or (AR, 1).
+   The simulation fields have the same aspect (dimsFor), so their texels are square too.
+   ====================================================================== */
+const ASPECTS = { '1:1': [1, 1], '16:9': [16, 9], '9:16': [9, 16], '4:5': [4, 5], '21:9': [21, 9] };
+const AR_MIN = 0.25, AR_MAX = 4;
+const aspect = { preset: '1:1', w: 1, h: 1 };
+const fit = { mode: 'cover', x: 0, y: 0 };
+// Render settings (stored only; the offline render of pass 6 reads them). 647 s = 10:47, the length of Für Alina.
+const renderSet = { w: 1920, h: 1080, fps: 25, duration: 647, label: '', lock: true };
+let AR = 1, ASPX = 1, ASPY = 1;
+const dimsFor = (long) => (AR >= 1 ? [long, Math.max(8, Math.round(long / AR))] : [Math.max(8, Math.round(long * AR)), long]);
 
 function mulberry32(a) {
   return function () {
@@ -263,6 +313,165 @@ function randomEvents(seed) {
 let randomOn = false, randomDone = false, randomList = [], randomIdx = 0, randomSeed = 1;
 
 /* ======================================================================
+   TIFF decoder (inline, no library). Browsers other than Safari cannot show TIFF, and Photoshop's default export is one.
+   Reads the FIRST image of the file: little- or big-endian; compression 1 (none) and 5 (LZW, with the horizontal predictor 2);
+   8- or 16-bit unsigned samples; PhotometricInterpretation RGB (2, with 3 or 4 samples per pixel) or grey (0 / 1, one sample);
+   stripped (StripOffsets / StripByteCounts / RowsPerStrip); PlanarConfiguration 1. Anything else is REFUSED with a message that names the
+   reason (TiffRefusal): tiles, JPEG / ZIP / PackBits / other compression, float or signed samples, CMYK / palette / YCbCr / Lab, planar 2,
+   BigTIFF, more than one full-size image (multi-page; reduced-resolution thumbnails and masks after the first image are ignored).
+   decodeTIFF(arrayBuffer) -> { width, height, spp, bits, photometric: 'gray' | 'rgb', alpha: 'none' | 'associated' | 'unassociated',
+                                data: Uint8Array | Uint16Array, interleaved, spp samples per pixel, grey already BlackIsZero, upright }
+   The code between the TIFF-BEGIN and TIFF-END markers is what the decoder's Node test runs, verbatim.
+   ====================================================================== */
+/* TIFF-BEGIN */
+class TiffRefusal extends Error {}
+const TIFF_COMPRESSION = { 2: 'CCITT RLE', 3: 'CCITT Group 3', 4: 'CCITT Group 4', 6: 'old-style JPEG', 7: 'JPEG', 8: 'ZIP (Deflate)', 32946: 'ZIP (Deflate)',
+  32773: 'PackBits', 32771: 'word-aligned RLE', 34712: 'JPEG 2000', 34925: 'LZMA', 50000: 'ZSTD', 50001: 'WebP', 34887: 'LERC' };
+const TIFF_PHOTOMETRIC = { 3: 'palette (indexed colour)', 4: 'transparency mask', 5: 'CMYK (separated)', 6: 'YCbCr', 8: 'CIELab', 9: 'ICCLab', 10: 'ITULab', 32803: 'colour filter array (raw)', 34892: 'linear raw' };
+function tiffRefuse(why) { throw new TiffRefusal('TIFF refused: ' + why + '.'); }
+
+// TIFF LZW (MSB-first codes, 9..12 bits, clear 256, end 257, "early change": the code width grows when the table reaches 511 / 1023 / 2047).
+// Decodes at most `expected` bytes into `out`; returns how many it produced.
+function tiffLzw(src, out, expected) {
+  const pre = new Uint16Array(4096), suf = new Uint8Array(4096), fst = new Uint8Array(4096), len = new Uint16Array(4096);
+  for (let i = 0; i < 256; i++) { suf[i] = i; fst[i] = i; len[i] = 1; }
+  let op = 0, ip = 0, acc = 0, nb = 0, next = 258, width = 9, old = -1;
+  const n = src.length;
+  while (op < expected) {
+    while (nb < width) { if (ip >= n) return op; acc = (acc << 8) | src[ip++]; nb += 8; }
+    nb -= width;
+    const code = (acc >> nb) & ((1 << width) - 1);
+    acc &= (1 << nb) - 1;
+    if (code === 257) break;
+    if (code === 256) { next = 258; width = 9; old = -1; continue; }
+    if (old < 0) { if (code > 255) return op; out[op++] = code; old = code; continue; }
+    if (code > next) return op;                              // damaged stream
+    if (next < 4096) {                                       // new entry = previous string + first byte of the current one (or of the previous one, when the code is the entry being defined)
+      pre[next] = old; suf[next] = code < next ? fst[code] : fst[old]; fst[next] = fst[old]; len[next] = len[old] + 1; next++;
+    }
+    const L = len[code];
+    for (let k = code, q = op + L - 1; q >= op; k = pre[k], q--) if (q < expected) out[q] = suf[k];
+    op += L;
+    old = code;
+    if (next >= (1 << width) - 1 && width < 12) width++;
+  }
+  return Math.min(op, expected);
+}
+
+function decodeTIFF(buf) {
+  const u8 = new Uint8Array(buf), dv = new DataView(buf), size = u8.length;
+  if (size < 8) tiffRefuse('the file is too short to be a TIFF');
+  const le = u8[0] === 0x49 && u8[1] === 0x49;
+  if (!le && !(u8[0] === 0x4D && u8[1] === 0x4D)) tiffRefuse('not a TIFF (no II / MM byte-order mark)');
+  const magic = dv.getUint16(2, le);
+  if (magic === 43) tiffRefuse('BigTIFF (64-bit offsets) is not supported');
+  if (magic !== 42) tiffRefuse('not a TIFF (bad magic number)');
+  const TYPE_SIZE = { 1: 1, 2: 1, 3: 2, 4: 4, 6: 1, 7: 1, 8: 2, 9: 4 };
+  const WANT = new Set([254, 256, 257, 258, 259, 262, 266, 273, 274, 277, 278, 279, 284, 317, 322, 323, 324, 325, 338, 339]);   // other tags (Photoshop's private blocks can be hundreds of MB) are not read
+  const readIFD = (off) => {
+    if (off < 8 || off + 2 > size) tiffRefuse('the file is truncated (bad IFD offset)');
+    const cnt = dv.getUint16(off, le);
+    if (off + 2 + cnt * 12 + 4 > size) tiffRefuse('the file is truncated (IFD runs past the end)');
+    const tags = {};
+    for (let i = 0; i < cnt; i++) {
+      const e = off + 2 + i * 12, tag = dv.getUint16(e, le), type = dv.getUint16(e + 2, le), count = dv.getUint32(e + 4, le);
+      const sz = TYPE_SIZE[type];
+      if (!sz || !WANT.has(tag)) continue;                    // rational / float / 64-bit tags and everything not listed above: not needed
+      const at = count * sz <= 4 ? e + 8 : dv.getUint32(e + 8, le);
+      if (at + count * sz > size) { if (tag === 273 || tag === 279) tiffRefuse('the file is truncated (strip table runs past the end)'); continue; }
+      const v = new Array(count);
+      for (let k = 0; k < count; k++) {
+        const p = at + k * sz;
+        v[k] = sz === 1 ? u8[p] : sz === 2 ? (type === 8 ? dv.getInt16(p, le) : dv.getUint16(p, le)) : (type === 9 ? dv.getInt32(p, le) : dv.getUint32(p, le));
+      }
+      tags[tag] = v;
+    }
+    return { tags, next: dv.getUint32(off + 2 + cnt * 12, le) };
+  };
+  const first = readIFD(dv.getUint32(4, le)), T = first.tags;
+  const t1 = (tag, dflt) => (T[tag] && T[tag].length ? T[tag][0] : dflt);
+  // further images: reduced-resolution versions (NewSubfileType bit 0) and masks (bit 2) are ignored, a real second page is refused
+  { let off = first.next, pages = 1, guard = 0;
+    while (off && guard++ < 64) {
+      const nx = readIFD(off), sub = nx.tags[254] && nx.tags[254].length ? nx.tags[254][0] : 0;
+      if (!(sub & 1) && !(sub & 4)) pages++;
+      off = nx.next;
+    }
+    if (pages > 1) tiffRefuse('multi-page TIFF (' + pages + ' full-size images; only single-image files are read)');
+  }
+  const w = t1(256, 0), h = t1(257, 0);
+  if (!(w > 0) || !(h > 0)) tiffRefuse('width or height is missing');
+  if (w * h > 150e6) tiffRefuse('the image is ' + Math.round(w * h / 1e6) + ' megapixels (at most 150 are read)');   // also stops a damaged header from asking for gigabytes
+  if (T[322] || T[323] || T[324] || T[325]) tiffRefuse('tiled TIFF (only stripped files are read)');
+  const comp = t1(259, 1);
+  if (comp !== 1 && comp !== 5) tiffRefuse((TIFF_COMPRESSION[comp] || 'compression code ' + comp) + ' compression is not supported (only uncompressed and LZW)');
+  if (t1(284, 1) !== 1) tiffRefuse('planar configuration 2 (separate colour planes) is not supported');
+  if (t1(266, 1) !== 1) tiffRefuse('FillOrder 2 (least-significant bit first) is not supported');
+  const photo = t1(262, -1);
+  if (photo < 0) tiffRefuse('PhotometricInterpretation is missing');
+  if (photo > 2) tiffRefuse((TIFF_PHOTOMETRIC[photo] || 'photometric code ' + photo) + ' is not supported (only RGB and grey)');
+  const spp = t1(277, 1);
+  const sfmt = T[339] || [1];
+  if (sfmt.some((f) => f !== 1)) tiffRefuse((sfmt.some((f) => f === 3) ? 'floating-point' : 'signed-integer') + ' samples are not supported (only unsigned 8- and 16-bit)');
+  const bpsList = T[258] || [1];
+  const bits = bpsList[0];
+  if (bpsList.some((b) => b !== bits) || (bits !== 8 && bits !== 16)) tiffRefuse(bpsList.join('/') + '-bit samples are not supported (only 8 and 16 bits per channel)');
+  if (photo === 2 ? (spp !== 3 && spp !== 4) : spp !== 1) tiffRefuse((photo === 2 ? 'RGB' : 'grey') + ' with ' + spp + ' samples per pixel is not supported (grey: 1; RGB: 3, or 4 with alpha)');
+  const predTag = t1(317, 1);
+  if (predTag !== 1 && predTag !== 2) tiffRefuse('predictor ' + predTag + (predTag === 3 ? ' (floating-point)' : '') + ' is not supported');
+  const predictor = comp === 5 ? predTag : 1;                 // the predictor belongs to LZW; on uncompressed data libtiff ignores the tag, so does this
+  let alpha = 'none';
+  if (photo === 2 && spp === 4) { const ex = t1(338, 0); alpha = ex === 1 ? 'associated' : ex === 2 ? 'unassociated' : 'none'; }
+  const rps = Math.min(t1(278, h) || h, h), nStrips = Math.ceil(h / rps);
+  const offs = T[273];
+  if (!offs || offs.length < nStrips) tiffRefuse('StripOffsets are missing or incomplete (not a stripped TIFF)');
+  const bps = bits >> 3, rowBytes = w * spp * bps;
+  const counts = T[279];
+  if ((!counts || counts.length < nStrips) && comp !== 1) tiffRefuse('StripByteCounts are missing');
+  const data = bits === 8 ? new Uint8Array(w * h * spp) : new Uint16Array(w * h * spp);
+  for (let s = 0; s < nStrips; s++) {
+    const rows = Math.min(rps, h - s * rps), need = rows * rowBytes, start = offs[s];
+    const have = counts && counts[s] != null ? counts[s] : need;
+    if (start + (comp === 1 ? need : have) > size) tiffRefuse('the file is truncated (strip ' + s + ' runs past the end)');
+    const raw = u8.subarray(start, start + have);
+    let bytes;
+    if (comp === 1) bytes = raw;
+    else { bytes = new Uint8Array(need); if (tiffLzw(raw, bytes, need) < need) tiffRefuse('the LZW data of strip ' + s + ' is damaged or truncated'); }
+    const base = s * rps * w * spp, nS = rows * w * spp;
+    if (bits === 8) {
+      for (let k = 0; k < nS; k++) data[base + k] = bytes[k];
+      if (predictor === 2) for (let r = 0; r < rows; r++) { const o = base + r * w * spp; for (let k = spp; k < w * spp; k++) data[o + k] = (data[o + k] + data[o + k - spp]) & 255; }
+    } else {
+      for (let k = 0; k < nS; k++) data[base + k] = le ? bytes[2 * k] | (bytes[2 * k + 1] << 8) : (bytes[2 * k] << 8) | bytes[2 * k + 1];
+      if (predictor === 2) for (let r = 0; r < rows; r++) { const o = base + r * w * spp; for (let k = spp; k < w * spp; k++) data[o + k] = (data[o + k] + data[o + k - spp]) & 65535; }
+    }
+  }
+  if (photo === 0) { const mx = bits === 8 ? 255 : 65535; for (let k = 0; k < data.length; k++) data[k] = mx - data[k]; }   // WhiteIsZero -> BlackIsZero
+  const out = { width: w, height: h, spp, bits, photometric: photo === 2 ? 'rgb' : 'gray', alpha, data };
+  const ori = t1(274, 1);
+  if (ori >= 2 && ori <= 8) {                                   // Orientation: make the pixels upright
+    const sw = ori >= 5 ? h : w, sh = ori >= 5 ? w : h, res = bits === 8 ? new Uint8Array(data.length) : new Uint16Array(data.length);
+    for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) {
+      let X, Y;
+      switch (ori) {
+        case 2: X = w - 1 - c; Y = r; break;
+        case 3: X = w - 1 - c; Y = h - 1 - r; break;
+        case 4: X = c; Y = h - 1 - r; break;
+        case 5: X = r; Y = c; break;
+        case 6: X = h - 1 - r; Y = c; break;
+        case 7: X = h - 1 - r; Y = w - 1 - c; break;
+        default: X = r; Y = w - 1 - c;
+      }
+      const a = (r * w + c) * spp, b = (Y * sw + X) * spp;
+      for (let k = 0; k < spp; k++) res[b + k] = data[a + k];
+    }
+    out.width = sw; out.height = sh; out.data = res;
+  }
+  return out;
+}
+/* TIFF-END */
+
+/* ======================================================================
    Procedural placeholder variants: an abstract, generic human-profile
    silhouette (bezier curves), softened, with small per-variant differences.
    ====================================================================== */
@@ -306,9 +515,9 @@ function silhouettePath(ctx, P) {
   ctx.closePath();
 }
 
-function makeProceduralVariant(v) {
+function makeProceduralVariant(v, W, H0) {     // W x H0 canvas; the silhouette is square art of side S = the short side, centred, standing on the bottom edge
   const P = VPARAMS[v % VPARAMS.length];
-  const S = VAR_RES, H = 256;
+  const S = Math.min(W, H0), H = 256;
   // 1) sharp silhouette on a small canvas (light halo first, dark body on top)
   const sil = document.createElement('canvas'); sil.width = sil.height = H;
   const sx = sil.getContext('2d');
@@ -335,26 +544,14 @@ function makeProceduralVariant(v) {
   const m2 = mid2.getContext('2d'); m2.imageSmoothingEnabled = true; m2.imageSmoothingQuality = 'high';
   m2.drawImage(mid, 0, 0, 56, 56, 0, 0, 120, 120);
   // 3) ground + soft silhouette
-  const c = document.createElement('canvas'); c.width = c.height = S;
+  const c = document.createElement('canvas'); c.width = W; c.height = H0;
   const x = c.getContext('2d'); x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
   const b = P.bgShift, T = SURFACE_TONE;
-  const gr = x.createLinearGradient(0, 0, S * 0.3, S);
+  const gr = x.createLinearGradient(0, 0, W * 0.3, H0);
   gr.addColorStop(0, `rgb(${T[0] + 14 + b},${T[1] + 14 + b},${T[2] + 14 + b})`);
   gr.addColorStop(1, `rgb(${T[0] - 12 + b},${T[1] - 12 + b},${T[2] - 12 + b})`);
-  x.fillStyle = gr; x.fillRect(0, 0, S, S);
-  x.drawImage(mid2, 0, 0, 120, 120, 0, 0, S, S);
-  return c;
-}
-
-function fitToSquare(img) {     // uploaded image: keep aspect, letterbox with surface tone
-  const S = VAR_RES, c = document.createElement('canvas'); c.width = c.height = S;
-  const x = c.getContext('2d');
-  x.fillStyle = `rgb(${SURFACE_TONE[0]},${SURFACE_TONE[1]},${SURFACE_TONE[2]})`;
-  x.fillRect(0, 0, S, S);
-  const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
-  const k = Math.min(S / w, S / h), dw = w * k, dh = h * k;
-  x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
-  x.drawImage(img, (S - dw) / 2, (S - dh) / 2, dw, dh);
+  x.fillStyle = gr; x.fillRect(0, 0, W, H0);
+  x.drawImage(mid2, 0, 0, 120, 120, (W - S) / 2, H0 - S, S, S);
   return c;
 }
 
@@ -389,26 +586,29 @@ const FS_SIM = `#version 300 es
 precision highp float; precision highp sampler2D;
 #define MAXD ${MAXD}
 uniform sampler2D uState;
-uniform float uC2, uDamp, uEdge, uSpread, uRs, uSize;
-uniform vec4 uDa[MAXD];        // x, y (uv, v up), sigma, wavelength; sigma <= 0 = empty slot
+uniform float uC2, uDamp, uEdge, uSpread, uRs;
+uniform vec2 uSz;              // field size in texels (width, height)
+uniform vec2 uAsp;             // physical extent of the canvas in units of its long side: (1, 1/aspect) or (aspect, 1). All distances are measured there.
+uniform vec4 uDa[MAXD];        // x, y (uv, v up), sigma, wavelength (sigma and wavelength in long-side units); sigma <= 0 = empty slot
 uniform float uDb[MAXD];       // signed height increment for this pass
 in vec2 vUv; out vec4 o;
 void main(){
   ivec2 ip = ivec2(gl_FragCoord.xy);
-  ivec2 mx = ivec2(int(uSize) - 1);
+  ivec2 mx = ivec2(uSz) - 1;
   vec2 s = texelFetch(uState, ip, 0).xy;
   float hl = texelFetch(uState, clamp(ip + ivec2(-1, 0), ivec2(0), mx), 0).x;
   float hr = texelFetch(uState, clamp(ip + ivec2( 1, 0), ivec2(0), mx), 0).x;
   float hd = texelFetch(uState, clamp(ip + ivec2( 0,-1), ivec2(0), mx), 0).x;
   float hu = texelFetch(uState, clamp(ip + ivec2( 0, 1), ivec2(0), mx), 0).x;
   float lap = hl + hr + hd + hu - 4.0 * s.x;
-  vec2 uv = gl_FragCoord.xy / uSize;
-  float edge = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
+  vec2 uv = gl_FragCoord.xy / uSz;
+  vec2 pa = uv * uAsp, pb = (1.0 - uv) * uAsp;
+  float edge = min(min(pa.x, pb.x), min(pa.y, pb.y));
   float dmin = 1e3, a = 0.0;
   for (int i = 0; i < MAXD; i++) {
     vec4 q = uDa[i];
     if (q.z <= 0.0) continue;
-    float r = distance(uv, q.xy);
+    float r = distance(pa, q.xy * uAsp);
     dmin = min(dmin, r);
     float db = uDb[i];
     if (db != 0.0 && r < 2.6 * q.z) a += db * cos(6.28318531 * r / q.w) * exp(-(r * r) / (q.z * q.z));
@@ -427,10 +627,10 @@ void main(){
 // |1 - 8T| <= 1 cannot destabilise the leapfrog step (the in-step version would, at high wave speed).
 const FS_TENS = `#version 300 es
 precision highp float; precision highp sampler2D;
-uniform sampler2D uState; uniform float uSize, uTens;
+uniform sampler2D uState; uniform vec2 uSz; uniform float uTens;
 out vec4 o;
 void main(){
-  ivec2 ip = ivec2(gl_FragCoord.xy); ivec2 mx = ivec2(int(uSize) - 1);
+  ivec2 ip = ivec2(gl_FragCoord.xy); ivec2 mx = ivec2(uSz) - 1;
   vec2 s  = texelFetch(uState, ip, 0).xy;
   vec2 sl = texelFetch(uState, clamp(ip + ivec2(-1, 0), ivec2(0), mx), 0).xy;
   vec2 sr = texelFetch(uState, clamp(ip + ivec2( 1, 0), ivec2(0), mx), 0).xy;
@@ -451,7 +651,8 @@ uniform sampler2D uIn;
 uniform vec4 uMa[MAXD];        // x, y (uv), reveal radius, active
 uniform vec4 uMb[MAXD];        // age at step start, age at step end, reveal duration, wave speed (uv/s)
 uniform vec4 uMc[MAXD];        // erosion amount at the centre, feather start (fraction of radius)
-uniform float uMax, uStep, uSize;
+uniform float uMax, uStep;
+uniform vec2 uSz, uAsp;        // mask size in texels; physical extent in long-side units (see FS_SIM)
 out vec4 o;
 void main(){
   vec4 m = texelFetch(uIn, ivec2(gl_FragCoord.xy), 0);
@@ -461,12 +662,12 @@ void main(){
   // starts at a texel when the ring front arrives (r/c) and takes the reveal duration to settle.
   // The increments telescope, so the full advance is exactly amount * feather(r).
   // feather(r) = 1 - smoothstep(f0 * R, R, r): a wide radial ramp, f0 set by wearSoftness.
-  vec2 uv = gl_FragCoord.xy / uSize;
+  vec2 uv = gl_FragCoord.xy / uSz;
   float adv = 0.0;
   for (int i = 0; i < MAXD; i++) {
     vec4 a = uMa[i];
     if (a.w < 0.5) continue;
-    float r = distance(uv, a.xy);
+    float r = distance(uv * uAsp, a.xy * uAsp);
     if (r >= a.z) continue;
     vec4 b = uMb[i];
     vec4 c = uMc[i];
@@ -483,10 +684,10 @@ void main(){
 // Derived field for display: xy = slope per texel, z = height. Half-float, linearly filtered.
 const FS_DERIVE = `#version 300 es
 precision highp float; precision highp sampler2D;
-uniform sampler2D uState; uniform float uSize;
+uniform sampler2D uState; uniform vec2 uSz;
 in vec2 vUv; out vec4 o;
 void main(){
-  ivec2 ip = ivec2(gl_FragCoord.xy); ivec2 mx = ivec2(int(uSize) - 1);
+  ivec2 ip = ivec2(gl_FragCoord.xy); ivec2 mx = ivec2(uSz) - 1;
   float h  = texelFetch(uState, ip, 0).x;
   float hl = texelFetch(uState, clamp(ip + ivec2(-1, 0), ivec2(0), mx), 0).x;
   float hr = texelFetch(uState, clamp(ip + ivec2( 1, 0), ivec2(0), mx), 0).x;
@@ -499,7 +700,9 @@ void main(){
 const GLSL_COMMON = `
 uniform sampler2D uMask;
 uniform sampler2DArray uVar;
-uniform float uNImg, uGrid;        // uGrid = side of the erosion mask (fieldRes)
+uniform float uNImg, uGridL;       // uGridL = long side of the erosion mask (fieldRes)
+uniform vec2 uGrid;                // erosion mask size in texels (width, height)
+uniform vec2 uAsp;                 // physical extent of the canvas in units of its long side: (1, 1/aspect) or (aspect, 1)
 uniform vec4 uTh;                  // layer thicknesses t0..t3 (depth units)
 uniform float uEdgeSharp, uLipTex; // layer-edge lip: 0..1, and its width in mask texels (1 at sharpness 1)
 // the light (one set of numbers for every shading term): direction TO the light in the image frame (u right, v up, z out of the surface)
@@ -523,7 +726,7 @@ float band(float x, float w){ return 1.0 - smoothstep(0.0, w, abs(x)); }
 float maskAt(vec2 uv){
   vec2 q = uv * uGrid - 0.5;
   vec2 fl = floor(q), f = q - fl;
-  ivec2 i0 = ivec2(fl), mx = ivec2(int(uGrid) - 1);
+  ivec2 i0 = ivec2(fl), mx = ivec2(uGrid) - 1;
   float a = texelFetch(uMask, clamp(i0, ivec2(0), mx), 0).y;
   float b = texelFetch(uMask, clamp(i0 + ivec2(1, 0), ivec2(0), mx), 0).y;
   float c = texelFetch(uMask, clamp(i0 + ivec2(0, 1), ivec2(0), mx), 0).y;
@@ -582,21 +785,22 @@ in vec2 vUv; out vec4 outC;
 ${GLSL_COMMON}
 void main(){
   vec2 uv = vUv;
+  vec2 up = uv * uAsp;           // physical position (long-side units): every pattern is measured here, so nothing is stretched
   // 1. surface slope: simulated field + seeded idle ripple (liquid scales its size and rate)
   vec3 dv = texture(uDerived, uv).xyz;
   vec2 g = dv.xy;
   for (int i = 0; i < 4; i++) {
     vec2 k = uW[i].xy * uIdleScale;
-    g += normalize(k) * cos(dot(k, uv) + uW[i].z * uIdleRate * uTime + uW[i].w) * uIdle * 0.5;
+    g += normalize(k) * cos(dot(k, up) + uW[i].z * uIdleRate * uTime + uW[i].w) * uIdle * 0.5;
   }
-  // 2. refraction: the profile texture is read at a slope-shifted position
-  vec2 suv = clamp(uv + g * uRefract * 0.7, 0.003, 0.997);
+  // 2. refraction: the profile texture is read at a slope-shifted position (the shift is physical, so it is divided by the extent)
+  vec2 suv = clamp(uv + g * uRefract * 0.7 / uAsp, 0.003, 0.997);
   // 3. erosion depth -> stack position (layer thicknesses) -> two adjacent stack layers; the weight of the lower one is the
   //    wide worn-skin crossfade and the narrow lip (layerMix), whose width is measured in space through the gradient of p
-  float e = 1.0 / uGrid;
+  vec2 e = 1.0 / uGrid;
   float d0 = maskAt(suv);
-  float dl = maskAt(suv - vec2(e, 0.0)), dr = maskAt(suv + vec2(e, 0.0));
-  float dd = maskAt(suv - vec2(0.0, e)), du = maskAt(suv + vec2(0.0, e));
+  float dl = maskAt(suv - vec2(e.x, 0.0)), dr = maskAt(suv + vec2(e.x, 0.0));
+  float dd = maskAt(suv - vec2(0.0, e.y)), du = maskAt(suv + vec2(0.0, e.y));
   float p = clamp(stackPos(d0), 0.0, uNImg);
   vec2 gp = 0.5 * vec2(clamp(stackPos(dr), 0.0, uNImg) - clamp(stackPos(dl), 0.0, uNImg),
                        clamp(stackPos(du), 0.0, uNImg) - clamp(stackPos(dd), 0.0, uNImg));   // per mask texel, toward more erosion
@@ -609,11 +813,11 @@ void main(){
   // layer-edge bevel: a raised-cosine slope profile edgeWidth (uv) wide, peak slope uEdgeH, centred on the line where the
   // layer ends (f = 0.5), falling toward the eroded side, so the lip catches the light; sd = distance to that line in uv.
   // Bounded: the bevel alone tilts the reflection normal by at most atan(16 uEdgeH) (25 deg at edgeHeight 0.3, 45 deg at 1).
-  float sd = (f - 0.5) / max(gl, GMIN) / uGrid;
+  float sd = (f - 0.5) / max(gl, GMIN) / uGridL;
   float bw = min(abs(sd) / (0.5 * uEdgeW), 1.0);
   g -= gp / max(gl, GMIN) * (uEdgeH * (0.5 + 0.5 * cos(3.14159265 * bw)));
   // visible depth: the eroded depth, scaled, is part of the surface height the light sees (cliffs between depths catch it)
-  g -= 0.5 * vec2(dr - dl, du - dd) * uGrid * uDepthK;
+  g -= 0.5 * vec2(dr - dl, du - dd) * uGridL * uDepthK;
   alb *= alb;                                     // to linear (approx.)
   alb *= vec3(0.93, 0.96, 1.0) * 0.9 * mix(vec3(1.0), uTint, 0.5);   // seen through a thin film of the liquid
   // 4. lighting of the image from the heightfield normals
@@ -622,7 +826,7 @@ void main(){
   vec3 dif = vec3(uAmb) + 0.75 * uLcol * max(dot(nL, L), 0.0);
   // 5. metal: Fresnel reflection of the environment, F0 = uReflect, exponent from the liquid
   vec3 nE = normalize(vec3(-g * 16.0, 1.0));
-  vec3 V = normalize(vec3(0.5 - uv, 1.7));
+  vec3 V = normalize(vec3((0.5 - uv) * uAsp, 1.7));
   vec3 R = reflect(-V, nE);
   float cv = max(dot(nE, V), 0.0);
   float F = uReflect + (1.0 - uReflect) * pow(1.0 - cv, uFPow);
@@ -632,7 +836,7 @@ void main(){
   vec3 en = envMap(R.xy / max(R.z, 0.15) * 1.4, uLcol) * uTint;
   // brushed streaks: direction and strength from the liquid
   float ca = cos(uBrushDir), sa = sin(uBrushDir);
-  vec2 bu = vec2(ca * uv.x + sa * uv.y, -sa * uv.x + ca * uv.y);
+  vec2 bu = vec2(ca * up.x + sa * up.y, -sa * up.x + ca * up.y);
   float brush = (vnoise(vec2(bu.x * 5.0, bu.y * 300.0)) - 0.5) + 0.6 * (vnoise(vec2(bu.x * 9.0, bu.y * 130.0)) - 0.5);
   en *= 1.0 + brush * uBrushStr;
   vec3 H = normalize(L + V);
@@ -649,10 +853,11 @@ void main(){
 
 // Crack quads. Vertex attribute aP = (across -1..1, half-width of the quad in uv, a, b); see FS_CRACK.
 const VS_CRACK = `#version 300 es
-layout(location = 0) in vec2 aPos;       // uv, v up (same frame as the heightfield)
+layout(location = 0) in vec2 aPos;       // physical position, v up: (0..1) x (0..1) on the long side's scale, (0..ax) x (0..ay) on the canvas
 layout(location = 1) in vec4 aP;
+uniform vec2 uAsp;                       // extent of the canvas in long-side units
 out vec4 vP;
-void main(){ vP = aP; gl_Position = vec4(aPos * 2.0 - 1.0, 0.0, 1.0); }`;
+void main(){ vP = aP; gl_Position = vec4(aPos / uAsp * 2.0 - 1.0, 0.0, 1.0); }`;
 
 // uMode 0 -> crack map (RGBA8, MAX-blended, never cleared during a piece):
 //   R = fissure depth profile (steep-walled groove; its peak grows with the crack width, so depth ~ width),
@@ -716,7 +921,8 @@ void main(){
 const FS_DISPLAY_SOLID = `#version 300 es
 precision highp float; precision highp sampler2D; precision highp sampler2DArray;
 uniform sampler2D uCrack, uFrag;
-uniform float uReflect, uRefract, uIdle, uTime, uCrackRes;
+uniform float uReflect, uRefract, uIdle, uTime, uCrackRes;   // uCrackRes = long side of the crack / fragment maps
+uniform vec2 uCrackD;          // their size in texels (width, height)
 uniform float uFPow, uSpecPow, uBrushStr, uBrushDir, uBevel, uPitAmt, uDepthH;   // uDepthH = visible depth (uv) per depth unit
 uniform vec3 uTint, uColA, uColB, uColC, uColD, uColP;
 uniform vec4 uCov;             // oxide cover lo/hi, patch lo/hi
@@ -734,7 +940,7 @@ float fbm(vec2 p){ float a = 0.5, s = 0.0; for (int i = 0; i < 4; i++) { s += a 
 
 // eroded depth, nearest texel (one fetch: it is read a dozen times per pixel for occlusion and shadow)
 float depthAt(vec2 q){
-  return uDepthH > 0.0 ? texelFetch(uMask, clamp(ivec2(q * uGrid), ivec2(0), ivec2(int(uGrid) - 1)), 0).y * uDepthH : 0.0;
+  return uDepthH > 0.0 ? texelFetch(uMask, clamp(ivec2(q * uGrid), ivec2(0), ivec2(uGrid) - 1), 0).y * uDepthH : 0.0;
 }
 float hgt(vec2 q){
   vec4 c = texture(uCrack, q);
@@ -762,55 +968,57 @@ vec3 skin(float pp, vec2 iuv, vec3 base, float brush, float gl){
 
 void main(){
   vec2 uv = vUv;
-  float ct = 1.0 / uCrackRes;
+  vec2 up = uv * uAsp;            // physical position (long-side units): noise, brushing and shadow reach are measured here, so nothing is stretched
+  vec2 ct2 = 1.0 / uCrackD;       // one crack-map texel in uv, per axis (the texels are square in physical space)
+  float ct = 1.0 / uCrackRes;     // one crack-map texel in long-side units
   float ca = cos(uBrushDir), sa = sin(uBrushDir);
   vec3 L = uLdir;                 // the Light block (a solid's default direction is the old brushing-derived one)
   vec2 Ld = uLaz;
   float tanE = uTanE;
   // 1. crack map: depth R, birth G, halo B, footprint A; fragment map: plate height, tilt, edge distance
   vec4 c0 = texture(uCrack, uv);
-  vec4 cL = texture(uCrack, uv - vec2(ct, 0.0)), cR = texture(uCrack, uv + vec2(ct, 0.0));
-  vec4 cD = texture(uCrack, uv - vec2(0.0, ct)), cU = texture(uCrack, uv + vec2(0.0, ct));
+  vec4 cL = texture(uCrack, uv - vec2(ct2.x, 0.0)), cR = texture(uCrack, uv + vec2(ct2.x, 0.0));
+  vec4 cD = texture(uCrack, uv - vec2(0.0, ct2.y)), cU = texture(uCrack, uv + vec2(0.0, ct2.y));
   float R = c0.r, Hh = c0.b, Sk = c0.a;
-  float hl = texture(uCrack, uv - vec2(3.0 * ct, 0.0)).b, hr = texture(uCrack, uv + vec2(3.0 * ct, 0.0)).b;
-  float hd = texture(uCrack, uv - vec2(0.0, 3.0 * ct)).b, hu = texture(uCrack, uv + vec2(0.0, 3.0 * ct)).b;
+  float hl = texture(uCrack, uv - vec2(3.0 * ct2.x, 0.0)).b, hr = texture(uCrack, uv + vec2(3.0 * ct2.x, 0.0)).b;
+  float hd = texture(uCrack, uv - vec2(0.0, 3.0 * ct2.y)).b, hu = texture(uCrack, uv + vec2(0.0, 3.0 * ct2.y)).b;
   vec2 gc = -(0.5 * vec2(cR.r - cL.r, cU.r - cD.r) + 0.45 * vec2(cR.a - cL.a, cU.a - cD.a) + 0.1 * vec2(hr - hl, hu - hd));
   vec4 f0 = texture(uFrag, uv);
   float eD = f0.a * AMAXD;
   float pc = smoothstep(0.0, 0.0014, eD);                                  // plate coverage
-  vec2 gE = 0.5 * vec2(texture(uFrag, uv + vec2(ct, 0.0)).a - texture(uFrag, uv - vec2(ct, 0.0)).a,
-                       texture(uFrag, uv + vec2(0.0, ct)).a - texture(uFrag, uv - vec2(0.0, ct)).a);   // points into the plate
+  vec2 gE = 0.5 * vec2(texture(uFrag, uv + vec2(ct2.x, 0.0)).a - texture(uFrag, uv - vec2(ct2.x, 0.0)).a,
+                       texture(uFrag, uv + vec2(0.0, ct2.y)).a - texture(uFrag, uv - vec2(0.0, ct2.y)).a);   // points into the plate
   vec2 gEu = gE / max(length(gE), 1e-4);
   float rimW = pc * (1.0 - smoothstep(0.0025, 0.0065, eD));                // the plate's top-skin edge
-  vec4 pt = texelFetch(uFrag, clamp(ivec2(uv * uCrackRes), ivec2(0), ivec2(int(uCrackRes) - 1)), 0);
+  vec4 pt = texelFetch(uFrag, clamp(ivec2(uv * uCrackD), ivec2(0), ivec2(uCrackD) - 1), 0);
   vec2 tilt = (pt.gb - 0.5) * 2.0 * TMAX;
   float fc = smoothstep(0.03, 0.14, R);                                    // fissure floor
   float floorW = max(fc, Sk) * (1.0 - pc);                                 // fissure floor + the gap under a lifted plate
   // 2. erosion depth read at a bevel-shifted position: p0 = stack position of the surface, p = with the spall footprint;
   //    gl0 / gl1 = their gradients per mask texel (the narrow layer-edge lip is measured in space)
-  vec2 suv = clamp(uv + gc * ct * uRefract * 10.0, 0.003, 0.997);
-  float em = 1.0 / uGrid;
+  vec2 suv = clamp(uv + gc * ct2 * uRefract * 10.0, 0.003, 0.997);
+  vec2 em = 1.0 / uGrid;
   float p0 = clamp(stackPos(maskAt(suv)), 0.0, uNImg);
-  vec2 gpm = 0.5 * vec2(clamp(stackPos(maskAt(suv + vec2(em, 0.0))), 0.0, uNImg) - clamp(stackPos(maskAt(suv - vec2(em, 0.0))), 0.0, uNImg),
-                        clamp(stackPos(maskAt(suv + vec2(0.0, em))), 0.0, uNImg) - clamp(stackPos(maskAt(suv - vec2(0.0, em))), 0.0, uNImg));
-  float gl0 = length(gpm), gl1 = length(gpm + 0.5 * vec2(cR.a - cL.a, cU.a - cD.a) * (uCrackRes / uGrid));
+  vec2 gpm = 0.5 * vec2(clamp(stackPos(maskAt(suv + vec2(em.x, 0.0))), 0.0, uNImg) - clamp(stackPos(maskAt(suv - vec2(em.x, 0.0))), 0.0, uNImg),
+                        clamp(stackPos(maskAt(suv + vec2(0.0, em.y))), 0.0, uNImg) - clamp(stackPos(maskAt(suv - vec2(0.0, em.y))), 0.0, uNImg));
+  float gl0 = length(gpm), gl1 = length(gpm + 0.5 * vec2(cR.a - cL.a, cU.a - cD.a) * (uCrackRes / uGridL));
   float p = clamp(p0 + texture(uCrack, suv).a, 0.0, uNImg);
   vec2 iuv = vec2(suv.x, 1.0 - suv.y);
   float expo = smoothstep(0.0, 0.8, p);
   // 3. brushing (not drawn across fissures or gaps; each plate has its own phase), procedural oxide / grime
-  vec2 bu = vec2(ca * uv.x + sa * uv.y, -sa * uv.x + ca * uv.y);
+  vec2 bu = vec2(ca * up.x + sa * up.y, -sa * up.x + ca * up.y);
   bu.y += pc * (pt.g * 31.7 + pt.b * 47.3);
   float keep = 1.0 - smoothstep(0.0, 0.5, floorW);
   float brush = ((vnoise(vec2(bu.x * 4.0, bu.y * 190.0)) - 0.5) + 0.6 * (vnoise(vec2(bu.x * 7.0, bu.y * 80.0)) - 0.5)
               + 0.3 * (vnoise(vec2(bu.x * 3.0, bu.y * 340.0)) - 0.5)) * keep;
-  vec2 wp = uv + 0.10 * (vec2(vnoise(uv * 3.1 + 1.3), vnoise(uv * 3.1 + 7.7)) - 0.5);   // domain warp: organic blotches
+  vec2 wp = up + 0.10 * (vec2(vnoise(up * 3.1 + 1.3), vnoise(up * 3.1 + 7.7)) - 0.5);   // domain warp: organic blotches
   float m1 = fbm(wp * uSc.x + 3.7), m2 = fbm(wp * uSc.y + 11.3), m3 = fbm(wp * uSc.z + 5.1);
   float cov = smoothstep(uCov.x, uCov.y, m1 * 0.65 + m2 * 0.35);
   cov *= 1.0 - 0.22 * smoothstep(0.12, 0.36, brush);                  // brushing / scuffs wear the coat through
   float pat = smoothstep(uCov.z, uCov.w, m3 * 0.7 + m2 * 0.3);
   float pit = smoothstep(0.66, 0.80, fbm(wp * 38.0 + 2.2)) * uPitAmt;
   float tt = uTime * 0.8, ti = floor(tt), tf = smoothstep(0.0, 1.0, tt - ti);
-  float flick = (mix(vnoise(uv * 70.0 + ti * 7.31), vnoise(uv * 70.0 + (ti + 1.0) * 7.31), tf) - 0.5) * uIdle * 20.0;
+  float flick = (mix(vnoise(up * 70.0 + ti * 7.31), vnoise(up * 70.0 + (ti + 1.0) * 7.31), tf) - 0.5) * uIdle * 20.0;
   vec3 metal = uColA * (1.0 + brush * uBrushStr * 0.7);
   vec3 ox = mix(uColB, uColC, smoothstep(0.35, 0.75, m2));
   ox = mix(ox, uColD, pat * uSc.w);
@@ -833,13 +1041,13 @@ void main(){
   // 4. height field: occlusion (contact shadow along fissures, footprints and plates) and the shadow cast along the light
   float h0 = f0.r * HRANGE - R * DEPTH_MAX - Sk * SOCK_D - depthAt(uv);
   float ao = 0.0;
-  for (int i = 0; i < 6; i++) ao += max(hgt(uv + AOD[i] * 3.5 * ct) - h0, 0.0);
+  for (int i = 0; i < 6; i++) ao += max(hgt(uv + AOD[i] * 3.5 * ct2) - h0, 0.0);
   ao = clamp(ao / 6.0 / 0.012, 0.0, 1.0);
   float sh = 0.0;
   float reach = clamp(0.8333 / tanE, 1.0, 3.0);      // a low light throws longer shadows: the five taps stretch (x1 from the default elevation up)
   for (int i = 1; i <= 5; i++) {
     float d = ct * 2.0 * float(i) * reach;
-    sh = max(sh, clamp((hgt(uv + Ld * d) - h0 - d * tanE) / 0.004, 0.0, 1.0));
+    sh = max(sh, clamp((hgt(uv + Ld * d / uAsp) - h0 - d * tanE) / 0.004, 0.0, 1.0));   // d is a physical distance along the light, the uv step divides by the extent
   }
   float shade = (1.0 - 0.6 * ao) * (1.0 - 0.6 * sh * min(uLint, 1.0));   // a light that is off casts no shadow
   // 5. lighting: bevels, plate tilt (flat per plate), fine relief of the coat
@@ -851,7 +1059,7 @@ void main(){
   vec3 nL = normalize(vec3(-gs, 1.0));
   vec3 dif = vec3(uAmb) + 0.75 * uLcol * max(dot(nL, L), 0.0);
   vec3 nE = normalize(vec3(-gs * 1.6, 1.0));
-  vec3 V = normalize(vec3(0.5 - uv, 1.7));
+  vec3 V = normalize(vec3((0.5 - uv) * uAsp, 1.7));
   vec3 Rv = reflect(-V, nE);
   float bare = clamp(1.0 - cov + expo, 0.0, 1.0);
   float F0 = uReflect * (1.0 + 0.9 * bare) * (1.0 - 0.6 * floorW);   // low Fresnel base, a little higher where the metal shows
@@ -889,25 +1097,25 @@ function makeProg(fs, names, vs) {
 const LIGHT_U = ['uTh', 'uEdgeSharp', 'uLipTex', 'uLdir', 'uLaz', 'uTanE', 'uLcol', 'uAmb', 'uLint', 'uEnvRot'];   // shared by both display shaders
 let progSim, progTens, progMask, progDerive, progDisplay, progCrack, progFrag, progMaskS, progDisplayS;
 try {
-  progSim = makeProg(FS_SIM, ['uState', 'uC2', 'uDamp', 'uEdge', 'uSpread', 'uRs', 'uSize', 'uDa', 'uDb']);
-  progTens = makeProg(FS_TENS, ['uState', 'uSize', 'uTens']);
-  progMask = makeProg(FS_MASK, ['uIn', 'uMa', 'uMb', 'uMc', 'uMax', 'uStep', 'uSize']);
-  progDerive = makeProg(FS_DERIVE, ['uState', 'uSize']);
-  progDisplay = makeProg(FS_DISPLAY, ['uDerived', 'uMask', 'uVar', 'uReflect', 'uRefract', 'uIdle', 'uTime', 'uNImg', 'uGrid', 'uW',
+  progSim = makeProg(FS_SIM, ['uState', 'uC2', 'uDamp', 'uEdge', 'uSpread', 'uRs', 'uSz', 'uAsp', 'uDa', 'uDb']);
+  progTens = makeProg(FS_TENS, ['uState', 'uSz', 'uTens']);
+  progMask = makeProg(FS_MASK, ['uIn', 'uMa', 'uMb', 'uMc', 'uMax', 'uStep', 'uSz', 'uAsp']);
+  progDerive = makeProg(FS_DERIVE, ['uState', 'uSz']);
+  progDisplay = makeProg(FS_DISPLAY, ['uDerived', 'uMask', 'uVar', 'uReflect', 'uRefract', 'uIdle', 'uTime', 'uNImg', 'uGrid', 'uGridL', 'uAsp', 'uW',
     'uFPow', 'uSpecPow', 'uBrushStr', 'uBrushDir', 'uIrid', 'uIdleScale', 'uIdleRate', 'uEdgeW', 'uEdgeH', 'uDepthK', 'uTint'].concat(LIGHT_U));
-  progCrack = makeProg(FS_CRACK, ['uMode'], VS_CRACK);
-  progFrag = makeProg(FS_FRAG, ['uMode'], VS_CRACK);
+  progCrack = makeProg(FS_CRACK, ['uMode', 'uAsp'], VS_CRACK);
+  progFrag = makeProg(FS_FRAG, ['uMode', 'uAsp'], VS_CRACK);
   progMaskS = makeProg(FS_MASK_SOLID, ['uIn', 'uInc', 'uMax', 'uStep']);
-  progDisplayS = makeProg(FS_DISPLAY_SOLID, ['uCrack', 'uFrag', 'uMask', 'uVar', 'uReflect', 'uRefract', 'uIdle', 'uTime', 'uCrackRes', 'uNImg', 'uGrid',
+  progDisplayS = makeProg(FS_DISPLAY_SOLID, ['uCrack', 'uFrag', 'uMask', 'uVar', 'uReflect', 'uRefract', 'uIdle', 'uTime', 'uCrackRes', 'uCrackD', 'uNImg', 'uGrid', 'uGridL', 'uAsp',
     'uFPow', 'uSpecPow', 'uBrushStr', 'uBrushDir', 'uBevel', 'uPitAmt', 'uDepthH', 'uTint', 'uColA', 'uColB', 'uColC', 'uColD', 'uColP', 'uCov', 'uSc'].concat(LIGHT_U));
 } catch (err) { fail(String(err.message || err)); return; }
 
 const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
 
-function makeTarget(size, internal, type, filter) {
+function makeTarget(w, h, internal, type, filter) {
   const tex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, tex);
-  gl.texImage2D(gl.TEXTURE_2D, 0, internal, size, size, 0, gl.RGBA, type, null);
+  gl.texImage2D(gl.TEXTURE_2D, 0, internal, w, h, 0, gl.RGBA, type, null);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -916,68 +1124,200 @@ function makeTarget(size, internal, type, filter) {
   gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
   gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
   const ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
-  return { tex, fbo, ok, size };
+  return { tex, fbo, ok, w, h };
 }
-function makePair(size, internal, type, filter) {
-  const a = makeTarget(size, internal, type, filter), b = makeTarget(size, internal, type, filter);
+function makePair(w, h, internal, type, filter) {
+  const a = makeTarget(w, h, internal, type, filter), b = makeTarget(w, h, internal, type, filter);
   return { t: [a, b], i: 0, ok: a.ok && b.ok, get cur() { return this.t[this.i]; }, get nxt() { return this.t[1 - this.i]; }, flip() { this.i = 1 - this.i; } };
 }
 
-let state = extF ? makePair(GRID, gl.RGBA32F, gl.FLOAT, gl.NEAREST) : null;
-const f32 = !!(state && state.ok);
-if (!f32) state = makePair(GRID, gl.RGBA16F, gl.HALF_FLOAT, gl.NEAREST);
-// erosion mask: continuous values accumulate small increments, so keep it 32-bit when available
-// (read with texelFetch + manual bilinear in the display shader, so no float-linear extension is needed).
-// It has its own size, `fieldRes` (FIELD_RES = 512; the wave field above stays at GRID = 256 and shares no texture with it):
-// 512 only where textures of 4096 exist and the 32-bit target is complete at 512, else the old 256.
-let fieldRes = GRID, mask = null;
-if (f32 && FIELD_RES > GRID && gl.getParameter(gl.MAX_TEXTURE_SIZE) >= 4096) {
-  mask = makePair(FIELD_RES, gl.RGBA32F, gl.FLOAT, gl.NEAREST);
-  if (mask.ok) fieldRes = FIELD_RES;
-  else { mask.t.forEach((q) => { gl.deleteFramebuffer(q.fbo); gl.deleteTexture(q.tex); }); mask = null; }
+// All simulation fields are rectangular with the canvas aspect: the long side is the resolution constant (GRID, FIELD_RES, CRACK_RES), the
+// short side follows the aspect, so a texel is square in physical space and every finite difference, impulse and feather stays round.
+//   wave state + derived field: simW x simH     erosion mask + this step's increment: fieldW x fieldH     crack + fragment maps: crackW x crackH
+// The erosion mask is 32-bit where available (continuous values accumulate small increments; read with texelFetch + manual bilinear in the
+// display shader, so no float-linear extension is needed). It has its own long side, `fieldRes` (FIELD_RES = 512): 512 only where textures
+// of 4096 exist and the 32-bit target is complete at that size, else the old 256. The probes run once; a later aspect change reuses their result.
+let state, mask, derived, crackMap, incMap, fragMap;
+let f32 = false, fieldRes = GRID, fieldsProbed = false;
+let simW = GRID, simH = GRID, fieldW = GRID, fieldH = GRID, crackW = CRACK_RES, crackH = CRACK_RES;
+const disposeTarget = (q) => { gl.deleteFramebuffer(q.fbo); gl.deleteTexture(q.tex); };
+function makeMaskPair(res) {
+  const [w, h] = dimsFor(res);
+  if (f32) { const m = makePair(w, h, gl.RGBA32F, gl.FLOAT, gl.NEAREST); if (m.ok) return m; m.t.forEach(disposeTarget); }
+  return makePair(w, h, gl.RGBA16F, gl.HALF_FLOAT, gl.NEAREST);
 }
-if (!mask) {
-  mask = f32 ? makePair(GRID, gl.RGBA32F, gl.FLOAT, gl.NEAREST) : null;
-  if (!mask || !mask.ok) mask = makePair(GRID, gl.RGBA16F, gl.HALF_FLOAT, gl.NEAREST);
+function buildFields() {
+  [state, mask].forEach((pr) => { if (pr) pr.t.forEach(disposeTarget); });
+  [derived, crackMap, incMap, fragMap].forEach((q) => { if (q) disposeTarget(q); });
+  [simW, simH] = dimsFor(GRID);
+  state = null;
+  if (extF && (!fieldsProbed || f32)) { state = makePair(simW, simH, gl.RGBA32F, gl.FLOAT, gl.NEAREST); if (!fieldsProbed) f32 = state.ok; }
+  if (!state || !state.ok) { if (state) state.t.forEach(disposeTarget); state = makePair(simW, simH, gl.RGBA16F, gl.HALF_FLOAT, gl.NEAREST); }
+  mask = null;
+  if (!fieldsProbed && f32 && FIELD_RES > GRID && gl.getParameter(gl.MAX_TEXTURE_SIZE) >= 4096) {
+    const [w, h] = dimsFor(FIELD_RES), m = makePair(w, h, gl.RGBA32F, gl.FLOAT, gl.NEAREST);
+    if (m.ok) { mask = m; fieldRes = FIELD_RES; } else m.t.forEach(disposeTarget);
+  }
+  if (!mask) mask = makeMaskPair(fieldRes);
+  [fieldW, fieldH] = dimsFor(fieldRes);
+  derived = makeTarget(simW, simH, gl.RGBA16F, gl.HALF_FLOAT, gl.LINEAR);
+  if (!state.ok || !mask.ok || !derived.ok) { fail('Float framebuffers are incomplete on this device.'); return false; }
+  // Solid family: crack map (CRACK_RES long side, RGBA8, bilinear, MAX-blended, never healed) and this step's erosion increment
+  // (same grid as the mask, RGBA8, cleared every step). Plain 8-bit targets: no float blending needed, works on iOS Safari.
+  [crackW, crackH] = dimsFor(CRACK_RES);
+  crackMap = makeTarget(crackW, crackH, gl.RGBA8, gl.UNSIGNED_BYTE, gl.LINEAR);
+  incMap = makeTarget(fieldW, fieldH, gl.RGBA8, gl.UNSIGNED_BYTE, gl.NEAREST);
+  fragMap = makeTarget(crackW, crackH, gl.RGBA8, gl.UNSIGNED_BYTE, gl.LINEAR);   // spall plates: height, tilt, edge distance
+  if (!crackMap.ok || !incMap.ok || !fragMap.ok) { fail('Crack framebuffers are incomplete on this device.'); return false; }
+  fieldsProbed = true;
+  return true;
 }
-const derived = makeTarget(GRID, gl.RGBA16F, gl.HALF_FLOAT, gl.LINEAR);
-if (!state.ok || !mask.ok || !derived.ok) { fail('Float framebuffers are incomplete on this device.'); return; }
-// Solid family: crack map (CRACK_RES^2 RGBA8, bilinear, MAX-blended, never healed) and this step's erosion increment
-// (fieldRes^2 RGBA8, cleared every step: same grid as the mask). Plain 8-bit targets: no float blending needed, works on iOS Safari.
-const crackMap = makeTarget(CRACK_RES, gl.RGBA8, gl.UNSIGNED_BYTE, gl.LINEAR);
-const incMap = makeTarget(fieldRes, gl.RGBA8, gl.UNSIGNED_BYTE, gl.NEAREST);
-const fragMap = makeTarget(CRACK_RES, gl.RGBA8, gl.UNSIGNED_BYTE, gl.LINEAR);   // spall plates: height, tilt, edge distance
-if (!crackMap.ok || !incMap.ok || !fragMap.ok) { fail('Crack framebuffers are incomplete on this device.'); return; }
+if (!buildFields()) return;
 const vaoC = gl.createVertexArray(), vboC = gl.createBuffer();
 gl.bindVertexArray(vaoC); gl.bindBuffer(gl.ARRAY_BUFFER, vboC);
 gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 24, 0);
 gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 24, 8);
 gl.bindVertexArray(vao);
 
-// Variant stack: TEXTURE_2D_ARRAY, 4 layers
+/* ======================================================================
+   Layer images. The variant stack is a TEXTURE_2D_ARRAY of 4 layers, all at the canvas aspect (long side VAR_RES for the procedural
+   placeholders, VAR_UP for uploads). An uploaded image is kept (`sources`) and fitted to the canvas by the fit rule: cover / contain /
+   stretch plus an x / y offset, so a change of aspect or fit is a re-fit, not a re-upload. 8-bit images (PNG, JPEG) are fitted by the
+   canvas; TIFFs by resampleRaw() below (a tent filter, exact on 16-bit data). If any layer is 16-bit the whole array is RGBA16F
+   (when the device can render to 16-bit float), else 8-bit.
+   ====================================================================== */
 const varTex = gl.createTexture();
-let variantN = 4;
+let variantN = 4, varW = VAR_RES, varH = VAR_RES, var16 = false;
 let proceduralMode = true;
-function setVariants(canvases) {
-  const N = canvases.length;
-  const S = VAR_RES, layer = S * S * 4, data = new Uint8Array(layer * 4);
-  for (let i = 0; i < N && i < 4; i++) {            // layers past N stay empty: the stack ends in white, no wrapping
-    data.set(canvases[i].getContext('2d').getImageData(0, 0, S, S).data, i * layer);
-  }
+let sources = [];                 // uploaded layers: { kind: 'img', el, name } | { kind: 'tiff', img, name }
+const can16 = !!(extF || extH);
+function uploadLayers(layers, W, H, want16) {
+  const N = Math.min(layers.length, 4), per = W * H * 4;
   gl.bindTexture(gl.TEXTURE_2D_ARRAY, varTex);
   gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-  gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.RGBA8, S, S, 4, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
-  gl.generateMipmap(gl.TEXTURE_2D_ARRAY);
+  let done = false;
+  if (want16 && can16) {
+    const data = new Float32Array(per * 4);              // layers past N stay empty: the stack ends in white, no wrapping
+    for (let i = 0; i < N; i++) {
+      const L = layers[i];
+      if (L.f32) data.set(L.f32, i * per);
+      else { const px = L.canvas.getContext('2d').getImageData(0, 0, W, H).data; for (let k = 0; k < per; k++) data[i * per + k] = px[k] / 255; }
+    }
+    for (let k = 0; k < 8 && gl.getError() !== gl.NO_ERROR; k++) { /* drain earlier errors, so only this upload's is read below */ }
+    gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.RGBA16F, W, H, 4, 0, gl.RGBA, gl.FLOAT, data);
+    if (gl.getError() === gl.NO_ERROR) { gl.generateMipmap(gl.TEXTURE_2D_ARRAY); done = gl.getError() === gl.NO_ERROR; }
+  }
+  if (!done) {
+    const data = new Uint8Array(per * 4);
+    for (let i = 0; i < N; i++) {
+      const L = layers[i];
+      if (L.f32) { const f = L.f32, o = i * per; for (let k = 0; k < per; k++) data[o + k] = Math.round(Math.min(1, Math.max(0, f[k])) * 255); }
+      else data.set(L.canvas.getContext('2d').getImageData(0, 0, W, H).data, i * per);
+    }
+    gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.RGBA8, W, H, 4, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
+    gl.generateMipmap(gl.TEXTURE_2D_ARRAY);
+  }
   gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
   gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  variantN = Math.min(N, 4);
+  variantN = N; varW = W; varH = H; var16 = done;
 }
 function useProcedural() {
-  setVariants([0, 1, 2, 3].map(makeProceduralVariant));
-  proceduralMode = true;
+  const [W, H] = dimsFor(VAR_RES);
+  uploadLayers([0, 1, 2, 3].map((v) => ({ canvas: makeProceduralVariant(v, W, H) })), W, H, false);
+  proceduralMode = true; sources = [];
   $('vinfo').textContent = 'Variants: 4 procedural placeholders, then white.';
+}
+
+// Fit rule -> source window and destination window (pixels). offset -1..1 places the window in the slack: -1 = left / top edge, 1 = right / bottom.
+function fitPlan(sw, sh, W, H) {
+  const ox = (fit.x + 1) / 2, oy = (fit.y + 1) / 2;
+  if (fit.mode === 'stretch') return { sx: 0, sy: 0, sw, sh, dx: 0, dy: 0, dw: W, dh: H };
+  if (fit.mode === 'contain') {
+    const k = Math.min(W / sw, H / sh), dw = sw * k, dh = sh * k;
+    return { sx: 0, sy: 0, sw, sh, dx: (W - dw) * ox, dy: (H - dh) * oy, dw, dh };
+  }
+  const k = Math.max(W / sw, H / sh), cw = W / k, ch = H / k;
+  return { sx: (sw - cw) * ox, sy: (sh - ch) * oy, sw: cw, sh: ch, dx: 0, dy: 0, dw: W, dh: H };
+}
+function fitCanvas(img, W, H) {      // 8-bit image (PNG, JPEG, anything the browser decodes) -> W x H canvas, letterbox in the surface tone
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const x = c.getContext('2d');
+  x.fillStyle = `rgb(${SURFACE_TONE[0]},${SURFACE_TONE[1]},${SURFACE_TONE[2]})`;
+  x.fillRect(0, 0, W, H);
+  const p = fitPlan(img.naturalWidth || img.width, img.naturalHeight || img.height, W, H);
+  x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
+  x.drawImage(img, p.sx, p.sy, p.sw, p.sh, p.dx, p.dy, p.dw, p.dh);
+  return c;
+}
+// Decoded TIFF -> Float32 RGBA (W x H, 0..1) through the fit plan. Separable tent filter of radius max(footprint, 1) source pixels: a
+// bilinear lookup when enlarging, an area-weighted average when reducing. Alpha is composited over the surface tone. Cost ~ source pixels.
+function resampleRaw(img, W, H, p) {
+  const out = new Float32Array(W * H * 4);
+  for (let i = 0; i < W * H; i++) { out[4 * i] = SURFACE_TONE[0] / 255; out[4 * i + 1] = SURFACE_TONE[1] / 255; out[4 * i + 2] = SURFACE_TONE[2] / 255; out[4 * i + 3] = 1; }
+  const sw = img.width, sh = img.height, spp = img.spp, data = img.data, maxv = img.bits === 16 ? 65535 : 255;
+  const gray = spp === 1, hasA = spp === 4 && img.alpha !== 'none', assoc = img.alpha === 'associated';
+  const x0 = Math.max(0, Math.ceil(p.dx - 0.5)), x1 = Math.min(W, Math.floor(p.dx + p.dw - 0.5) + 1);
+  const y0 = Math.max(0, Math.ceil(p.dy - 0.5)), y1 = Math.min(H, Math.floor(p.dy + p.dh - 0.5) + 1);
+  if (x1 <= x0 || y1 <= y0) return out;
+  const fx = p.sw / p.dw, fy = p.sh / p.dh, Rx = Math.max(fx, 1), Ry = Math.max(fy, 1);
+  const nx = x1 - x0, colLo = new Int32Array(nx), colHi = new Int32Array(nx), colOff = new Int32Array(nx + 1);
+  const colW = new Float32Array(Math.ceil(2 * Rx + 3) * nx);
+  let cmin = sw, cmax = 0, wp = 0;
+  for (let i = 0; i < nx; i++) {
+    const u = p.sx + (x0 + i + 0.5 - p.dx) * fx;
+    const lo = Math.max(0, Math.ceil(u - Rx - 0.5)), hi = Math.min(sw - 1, Math.floor(u + Rx - 0.5));
+    colLo[i] = lo; colHi[i] = hi; colOff[i] = wp;
+    let sum = 0;
+    for (let x = lo; x <= hi; x++) { const w = Math.max(0, 1 - Math.abs(x + 0.5 - u) / Rx); colW[wp++] = w; sum += w; }
+    if (sum > 0) for (let k = colOff[i]; k < wp; k++) colW[k] /= sum;
+    cmin = Math.min(cmin, lo); cmax = Math.max(cmax, hi);
+  }
+  colOff[nx] = wp;
+  const acc = new Float32Array(sw * 4);
+  const T0 = SURFACE_TONE[0] / 255, T1 = SURFACE_TONE[1] / 255, T2 = SURFACE_TONE[2] / 255;
+  for (let j = y0; j < y1; j++) {
+    const v = p.sy + (j + 0.5 - p.dy) * fy;
+    const ylo = Math.max(0, Math.ceil(v - Ry - 0.5)), yhi = Math.min(sh - 1, Math.floor(v + Ry - 0.5));
+    acc.fill(0, cmin * 4, (cmax + 1) * 4);
+    let wsum = 0;
+    for (let y = ylo; y <= yhi; y++) {
+      const wy = Math.max(0, 1 - Math.abs(y + 0.5 - v) / Ry);
+      if (wy <= 0) continue;
+      wsum += wy;
+      for (let x = cmin; x <= cmax; x++) {
+        const b = (y * sw + x) * spp;
+        let r, g, bl, a = 1;
+        if (gray) { r = g = bl = data[b] / maxv; }
+        else {
+          r = data[b] / maxv; g = data[b + 1] / maxv; bl = data[b + 2] / maxv;
+          if (hasA) { a = data[b + 3] / maxv; if (!assoc) { r *= a; g *= a; bl *= a; } }
+        }
+        const q = x * 4; acc[q] += wy * r; acc[q + 1] += wy * g; acc[q + 2] += wy * bl; acc[q + 3] += wy * a;
+      }
+    }
+    if (wsum <= 0) continue;
+    const inv = 1 / wsum;
+    for (let i = 0; i < nx; i++) {
+      let r = 0, g = 0, bl = 0, a = 0;
+      for (let x = colLo[i], k = colOff[i]; x <= colHi[i]; x++, k++) { const w = colW[k], q = x * 4; r += w * acc[q]; g += w * acc[q + 1]; bl += w * acc[q + 2]; a += w * acc[q + 3]; }
+      const o = (j * W + x0 + i) * 4, ia = 1 - a * inv;
+      out[o] = r * inv + T0 * ia; out[o + 1] = g * inv + T1 * ia; out[o + 2] = bl * inv + T2 * ia;
+    }
+  }
+  return out;
+}
+// Re-fit every uploaded layer to the current aspect and fit rule and upload the stack.
+function buildLayers() {
+  const [W, H] = dimsFor(VAR_UP);
+  const layers = sources.map((s) => (s.kind === 'tiff'
+    ? { f32: resampleRaw(s.img, W, H, fitPlan(s.img.width, s.img.height, W, H)) }
+    : { canvas: fitCanvas(s.el, W, H) }));
+  uploadLayers(layers, W, H, sources.some((s) => s.kind === 'tiff' && s.img.bits === 16));
+  proceduralMode = false;
+  $('vinfo').textContent = 'Variants: ' + layers.length + ' uploaded image' + (layers.length > 1 ? 's' : '') + ', then white. ' + W + '×' + H + (var16 ? ', 16-bit float' : ', 8-bit') +
+    (sources.some((s) => s.kind === 'tiff' && s.img.bits === 16) && !var16 ? ' (this device cannot hold 16-bit layers: reduced to 8 bits)' : '') + '.';
 }
 
 // Seeded idle ripple waves (k.xy in uv radians, omega, phase)
@@ -1234,7 +1574,7 @@ function buildPoly(rnd, g, x0, y0, ang0, len, gen, off, spd, w0, ewBase) {
     if (Math.hypot(nx - x, ny - y) > 1e-5) { bx.push(nx); by.push(ny); }
     r0 = Math.hypot(nx - g.ox, ny - g.oy);
     x = nx; y = ny; d += st;
-    if (last || x < -0.1 || x > 1.1 || y < -0.1 || y > 1.1) break;
+    if (last || x < -0.1 || x > ASPX + 0.1 || y < -0.1 || y > ASPY + 0.1) break;
   }
   if (bx.length < 2) return null;
   const px = [], py = [], n = bx.length;
@@ -1391,7 +1731,7 @@ function planFragments(rnd, ox, oy, prims, s, sc, tm, v, att, t0, polys) {
 
 function spawnCracks(ev) {
   const seq = dropSeq++;
-  const ox = ev.x, oy = 1 - ev.y;
+  const ox = ev.x * ASPX, oy = (1 - ev.y) * ASPY;                    // physical position (long-side units); all crack geometry lives there
   const rnd = mulberry32(hash3(seq, Math.round(ox * 4096), Math.round(oy * 4096)));
   const s = dropSize(ev);                                           // effective drop size 0.05 .. 2
   const k = s / S_REF, sc = Math.sqrt(k);
@@ -1496,8 +1836,8 @@ function drawBatch(arr, target, prog, mode, blendMax) {
   gl.bindVertexArray(vaoC);
   gl.bindBuffer(gl.ARRAY_BUFFER, vboC);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arr), gl.DYNAMIC_DRAW);
-  const P = pass(prog, target, target.size);
-  gl.uniform1f(P.u.uMode, mode);
+  const P = pass(prog, target);
+  gl.uniform1f(P.u.uMode, mode); gl.uniform2f(P.u.uAsp, ASPX, ASPY);
   if (blendMax) { gl.enable(gl.BLEND); gl.blendEquation(gl.MAX); gl.blendFunc(gl.ONE, gl.ONE); } else gl.disable(gl.BLEND);
   gl.drawArrays(gl.TRIANGLES, 0, arr.length / 6);
   gl.disable(gl.BLEND);
@@ -1584,43 +1924,43 @@ function fragPass() {
 function bindTex(unit, target, tex, loc) {
   gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(target, tex); gl.uniform1i(loc, unit);
 }
-function pass(prog, target, size) {
+function pass(prog, target, w, h) {         // target = a field (its own size) or null = the canvas (w x h)
   gl.useProgram(prog.p);
   gl.bindFramebuffer(gl.FRAMEBUFFER, target ? target.fbo : null);
-  gl.viewport(0, 0, size, size);
+  gl.viewport(0, 0, target ? target.w : w, target ? target.h : h);
   return prog;
 }
 
 function simPass(sp, apply) {
-  const P = pass(progSim, state.nxt, GRID);
+  const P = pass(progSim, state.nxt);
   bindTex(0, gl.TEXTURE_2D, state.cur.tex, P.u.uState);
   gl.uniform1f(P.u.uC2, sp.C2); gl.uniform1f(P.u.uDamp, sp.damp); gl.uniform1f(P.u.uEdge, sp.edge);
-  gl.uniform1f(P.u.uSpread, sp.G); gl.uniform1f(P.u.uRs, params.spread); gl.uniform1f(P.u.uSize, GRID);
+  gl.uniform1f(P.u.uSpread, sp.G); gl.uniform1f(P.u.uRs, params.spread); gl.uniform2f(P.u.uSz, simW, simH); gl.uniform2f(P.u.uAsp, ASPX, ASPY);
   gl.uniform4fv(P.u.uDa, aDa); gl.uniform1fv(P.u.uDb, apply ? aDb : zeroDb);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   state.flip();
 }
 function tensPass(sp) {
   if (!(sp.tens > 0)) return;
-  const P = pass(progTens, state.nxt, GRID);
+  const P = pass(progTens, state.nxt);
   bindTex(0, gl.TEXTURE_2D, state.cur.tex, P.u.uState);
-  gl.uniform1f(P.u.uSize, GRID); gl.uniform1f(P.u.uTens, sp.tens);
+  gl.uniform2f(P.u.uSz, simW, simH); gl.uniform1f(P.u.uTens, sp.tens);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   state.flip();
 }
 // total thickness (depth units) of the layers that exist: where the erosion depth ends in the white base
 const maxDepth = () => [params.th0, params.th1, params.th2, params.th3].slice(0, variantN).reduce((a, b) => a + b, 0);
 function maskPass() {
-  const P = pass(progMask, mask.nxt, fieldRes);
+  const P = pass(progMask, mask.nxt);
   bindTex(0, gl.TEXTURE_2D, mask.cur.tex, P.u.uIn);
   gl.uniform4fv(P.u.uMa, aMa); gl.uniform4fv(P.u.uMb, aMb); gl.uniform4fv(P.u.uMc, aMc);
-  gl.uniform1f(P.u.uMax, maxDepth()); gl.uniform1f(P.u.uStep, FOLLOW * DT); gl.uniform1f(P.u.uSize, fieldRes);
+  gl.uniform1f(P.u.uMax, maxDepth()); gl.uniform1f(P.u.uStep, FOLLOW * DT); gl.uniform2f(P.u.uSz, fieldW, fieldH); gl.uniform2f(P.u.uAsp, ASPX, ASPY);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   mask.flip();
 }
 
 function maskSolidPass() {
-  const P = pass(progMaskS, mask.nxt, fieldRes);
+  const P = pass(progMaskS, mask.nxt);
   bindTex(0, gl.TEXTURE_2D, mask.cur.tex, P.u.uIn);
   bindTex(1, gl.TEXTURE_2D, incMap.tex, P.u.uInc);
   gl.uniform1f(P.u.uMax, maxDepth()); gl.uniform1f(P.u.uStep, FOLLOW * DT);
@@ -1654,7 +1994,7 @@ function substep() {
 }
 
 function clearTarget(tg, r, g, b, a) {
-  gl.bindFramebuffer(gl.FRAMEBUFFER, tg.fbo); gl.viewport(0, 0, tg.size, tg.size);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, tg.fbo); gl.viewport(0, 0, tg.w, tg.h);
   gl.clearColor(r, g, b, a); gl.clear(gl.COLOR_BUFFER_BIT);
 }
 function restart() {
@@ -1715,25 +2055,26 @@ function setLightUniforms(P) {
 // tan(25 deg) / 16 at the default 0.3 (exponent ln(tan 25 deg) / ln 0.3)
 const edgeSlope = (h) => (Math.pow(Math.max(h, 0), 0.634) * Math.tan(Math.PI / 4)) / 16;
 function render() {
-  // size the backing store
+  // size the backing store: the stage's size x DPR (up to 2), the long side capped at CANVAS_MAX, at exactly the canvas aspect
   const r = canvas.getBoundingClientRect();
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const w = Math.max(2, Math.min(1024, Math.round(r.width * dpr)));
-  if (canvas.width !== w || canvas.height !== w) { canvas.width = w; canvas.height = w; }
+  let w = Math.max(2, Math.round(r.width * dpr)), h = Math.max(2, Math.round(w / AR));
+  if (Math.max(w, h) > CANVAS_MAX) { const k = CANVAS_MAX / Math.max(w, h); w = Math.max(2, Math.round(w * k)); h = Math.max(2, Math.round(h * k)); }
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
 
-  if (family === 'solid') { renderSolid(w); return; }
-  const D = pass(progDerive, derived, GRID);
+  if (family === 'solid') { renderSolid(w, h); return; }
+  const D = pass(progDerive, derived);
   bindTex(0, gl.TEXTURE_2D, state.cur.tex, D.u.uState);
-  gl.uniform1f(D.u.uSize, GRID);
+  gl.uniform2f(D.u.uSz, simW, simH);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
 
-  const P = pass(progDisplay, null, w);
+  const P = pass(progDisplay, null, w, h);
   bindTex(0, gl.TEXTURE_2D, derived.tex, P.u.uDerived);
   bindTex(1, gl.TEXTURE_2D, mask.cur.tex, P.u.uMask);
   bindTex(2, gl.TEXTURE_2D_ARRAY, varTex, P.u.uVar);
   gl.uniform1f(P.u.uReflect, params.reflect); gl.uniform1f(P.u.uRefract, params.refract);
   gl.uniform1f(P.u.uIdle, params.idle * liquid.idleAmp); gl.uniform1f(P.u.uTime, stepCount * DT + (playing ? acc : 0));
-  gl.uniform1f(P.u.uNImg, variantN); gl.uniform1f(P.u.uGrid, fieldRes); gl.uniform4fv(P.u.uW, idleW);
+  gl.uniform1f(P.u.uNImg, variantN); gl.uniform2f(P.u.uGrid, fieldW, fieldH); gl.uniform1f(P.u.uGridL, fieldRes); gl.uniform2f(P.u.uAsp, ASPX, ASPY); gl.uniform4fv(P.u.uW, idleW);
   const L = liquid;
   gl.uniform1f(P.u.uFPow, L.fresnelPow); gl.uniform1f(P.u.uSpecPow, L.specPow);
   gl.uniform1f(P.u.uBrushStr, L.brushStr); gl.uniform1f(P.u.uBrushDir, L.brushDir);
@@ -1744,16 +2085,17 @@ function render() {
   gl.drawArrays(gl.TRIANGLES, 0, 3);
 }
 
-function renderSolid(w) {
+function renderSolid(w, h) {
   const S = solid;
-  const P = pass(progDisplayS, null, w);
+  const P = pass(progDisplayS, null, w, h);
   bindTex(0, gl.TEXTURE_2D, crackMap.tex, P.u.uCrack);
   bindTex(1, gl.TEXTURE_2D, mask.cur.tex, P.u.uMask);
   bindTex(2, gl.TEXTURE_2D_ARRAY, varTex, P.u.uVar);
   bindTex(3, gl.TEXTURE_2D, fragMap.tex, P.u.uFrag);
   gl.uniform1f(P.u.uReflect, params.reflect); gl.uniform1f(P.u.uRefract, params.refract);
   gl.uniform1f(P.u.uIdle, params.idle); gl.uniform1f(P.u.uTime, stepCount * DT + (playing ? acc : 0));
-  gl.uniform1f(P.u.uCrackRes, CRACK_RES); gl.uniform1f(P.u.uNImg, variantN); gl.uniform1f(P.u.uGrid, fieldRes);
+  gl.uniform1f(P.u.uCrackRes, CRACK_RES); gl.uniform2f(P.u.uCrackD, crackW, crackH); gl.uniform1f(P.u.uNImg, variantN);
+  gl.uniform2f(P.u.uGrid, fieldW, fieldH); gl.uniform1f(P.u.uGridL, fieldRes); gl.uniform2f(P.u.uAsp, ASPX, ASPY);
   gl.uniform1f(P.u.uFPow, S.fresnelPow); gl.uniform1f(P.u.uSpecPow, S.specPow);
   gl.uniform1f(P.u.uBrushStr, S.brushStr); gl.uniform1f(P.u.uBrushDir, S.brushDir);
   gl.uniform1f(P.u.uBevel, S.bevel); gl.uniform1f(P.u.uPitAmt, S.pitAmt); gl.uniform1f(P.u.uDepthH, params.dscale * DEPTH_UNIT);
@@ -1830,7 +2172,9 @@ function syncValues() {
     wearSoftness: params.wear, edgeSharpness: params.edgeSharp, edgeWidth: params.edgeW, edgeHeight: params.edgeH,
     thickness: [params.th0, params.th1, params.th2, params.th3], depthScale: params.dscale, variants: variantN,
     reflect: params.reflect, refract: params.refract, idle: params.idle, timeScale: params.time,
-    light: { azimuth: r3(light.az), elevation: r3(light.el), intensity: light.int, kelvin: light.K, ambient: light.amb } });
+    light: { azimuth: r3(light.az), elevation: r3(light.el), intensity: light.int, kelvin: light.K, ambient: light.amb },
+    aspect: { preset: aspect.preset, w: aspect.w, h: aspect.h }, fit: { mode: fit.mode, x: fit.x, y: fit.y },
+    render: { w: renderSet.w, h: renderSet.h, fps: renderSet.fps, duration: renderSet.duration, label: renderSet.label } });
   $('json').value = JSON.stringify(o, null, 1);
 }
 Object.keys(ids).forEach((k) => {
@@ -1939,17 +2283,137 @@ function loadImage(file) {
     im.src = url;
   });
 }
-$('fFiles').addEventListener('change', async (e) => {
-  const files = Array.from(e.target.files || []).slice(0, 4);
+// One chosen file -> a layer source. TIFFs go through the inline decoder (browsers other than Safari cannot show them); the rest through Image.
+async function readSource(file) {
+  const h = new Uint8Array(await file.slice(0, 4).arrayBuffer());
+  const tiffMagic = ((h[0] === 0x49 && h[1] === 0x49) || (h[0] === 0x4D && h[1] === 0x4D)) && (h[2] === 0x2A || h[3] === 0x2A || h[2] === 0x2B || h[3] === 0x2B);
+  if (tiffMagic || /\.tiff?$/i.test(file.name)) {
+    try { return { kind: 'tiff', img: decodeTIFF(await file.arrayBuffer()), name: file.name }; }
+    catch (err) {
+      if (err instanceof TiffRefusal) throw new Error(err.message);
+      throw new Error('TIFF could not be read (' + (err && err.message || err) + ')');
+    }
+  }
+  return { kind: 'img', el: await loadImage(file), name: file.name };
+}
+function showMsg(lines) { const m = $('vmsg'); m.textContent = lines.join(' · '); m.hidden = !lines.length; }
+async function loadFiles(list) {
+  const files = Array.from(list || []).slice(0, 4);
   if (!files.length) return;
-  const cv = [];
-  for (const f of files) { try { cv.push(fitToSquare(await loadImage(f))); } catch (err) { console.warn(err); } }
-  e.target.value = '';
-  if (!cv.length) return;
-  setVariants(cv); proceduralMode = false;
-  $('vinfo').textContent = 'Variants: ' + cv.length + ' uploaded image' + (cv.length > 1 ? 's' : '') + ', then white.';
+  const got = [], msgs = [];
+  for (const f of files) {
+    try { got.push(await readSource(f)); }
+    catch (err) { msgs.push(f.name + ': ' + (err && err.message || err)); if (!/refused/.test(String(err && err.message))) console.warn(err); }
+  }
+  showMsg(msgs);
+  if (!got.length) return;
+  sources = got;
+  buildLayers();
   restart();
-});
+}
+$('fFiles').addEventListener('change', async (e) => { const list = Array.from(e.target.files || []); e.target.value = ''; await loadFiles(list); });
+
+/* ======================================================================
+   Aspect, image fit, render settings (UI + state)
+   ====================================================================== */
+const RENDER_LONG = 3840, RENDER_SHORT = 2160;
+const even = (v) => Math.max(2, 2 * Math.round(v / 2));
+// largest size allowed: 3840 on the long side, 2160 on the short side, whatever the orientation
+function fitRender(w, h, keepAspect) {
+  w = Math.max(16, w); h = Math.max(16, h);
+  const k = Math.min(1, RENDER_LONG / Math.max(w, h), RENDER_SHORT / Math.min(w, h));
+  if (keepAspect) return [even(w * k), even(h * k)];
+  return [even(Math.min(w, w > h ? RENDER_LONG : RENDER_SHORT)), even(Math.min(h, h > w ? RENDER_LONG : RENDER_SHORT))];
+}
+function showRender() {
+  $('nRW').value = renderSet.w; $('nRH').value = renderSet.h; $('tRLock').checked = renderSet.lock;
+  $('selFps').value = String(renderSet.fps); $('nRDur').value = renderSet.duration; $('tRLabel').value = renderSet.label;
+  const d = renderSet.duration, mm = Math.floor(d / 60), ss = Math.round(d % 60);
+  $('oRDur').textContent = mm + ':' + String(ss).padStart(2, '0');
+  const fr = Math.round(renderSet.fps * renderSet.duration);
+  $('rnote').textContent = renderSet.w + '×' + renderSet.h + ' at ' + renderSet.fps + ' fps for ' + renderSet.duration + ' s = ' + fr.toLocaleString('en-US') + ' frames' +
+    (Math.abs(renderSet.w / renderSet.h - AR) > 0.01 ? ' · not the preview aspect (' + (aspect.w + ':' + aspect.h) + ')' : '') + '. Up to 3840×2160.';
+}
+function renderFromAspect() {       // locked: keep the long side, follow the aspect
+  if (!renderSet.lock) return;
+  const long = Math.min(RENDER_LONG, Math.max(renderSet.w, renderSet.h));
+  [renderSet.w, renderSet.h] = fitRender(AR >= 1 ? long : long * AR, AR >= 1 ? long / AR : long, true);
+}
+function setRender(changed) {
+  if (changed === 'w') {
+    renderSet.w = Math.round(parseFloat($('nRW').value) || renderSet.w);
+    if (renderSet.lock) [renderSet.w, renderSet.h] = fitRender(renderSet.w, renderSet.w / AR, true); else [renderSet.w, renderSet.h] = fitRender(renderSet.w, renderSet.h, false);
+  } else if (changed === 'h') {
+    renderSet.h = Math.round(parseFloat($('nRH').value) || renderSet.h);
+    if (renderSet.lock) [renderSet.w, renderSet.h] = fitRender(renderSet.h * AR, renderSet.h, true); else [renderSet.w, renderSet.h] = fitRender(renderSet.w, renderSet.h, false);
+  } else if (changed === 'lock') {
+    renderSet.lock = $('tRLock').checked;
+    if (renderSet.lock) { renderSet.w = Math.round(renderSet.w); [renderSet.w, renderSet.h] = fitRender(renderSet.w, renderSet.w / AR, true); }
+  } else if (changed === 'fps') renderSet.fps = parseInt($('selFps').value, 10);
+  else if (changed === 'dur') renderSet.duration = Math.max(1, Math.min(86400, Math.round(parseFloat($('nRDur').value) || renderSet.duration)));
+  else if (changed === 'label') renderSet.label = $('tRLabel').value.slice(0, 80);
+  showRender(); syncValues();
+}
+$('nRW').addEventListener('change', () => setRender('w'));
+$('nRH').addEventListener('change', () => setRender('h'));
+$('tRLock').addEventListener('change', () => setRender('lock'));
+$('selFps').addEventListener('change', () => setRender('fps'));
+$('nRDur').addEventListener('change', () => setRender('dur'));
+$('tRLabel').addEventListener('input', () => setRender('label'));
+
+function showAspect() {
+  document.querySelectorAll('[data-aspect]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.aspect === aspect.preset ? 'true' : 'false'));
+  $('nAspW').value = aspect.w; $('nAspH').value = aspect.h;
+}
+// Set the canvas aspect. preset = a name of ASPECTS or 'custom'. Ratios outside 1:4 .. 4:1 are limited (and say so). The fields are rebuilt at the new
+// shape, the layer images re-fitted and the piece restarted, as a family change does.
+function setAspect(w, h, preset, opts) {
+  opts = opts || {};
+  w = parseFloat(w); h = parseFloat(h);
+  if (!(w > 0) || !(h > 0)) { $('anote').textContent = 'W and H must be positive numbers.'; showAspect(); return false; }
+  let note = '';
+  if (w / h > AR_MAX) { h = w / AR_MAX; note = 'Limited to 4 : 1.'; }
+  if (w / h < AR_MIN) { w = h * AR_MIN; note = 'Limited to 1 : 4.'; }
+  w = Math.round(w * 1000) / 1000; h = Math.round(h * 1000) / 1000;
+  if (preset !== 'custom' && !ASPECTS[preset]) preset = 'custom';
+  const same = aspect.w === w && aspect.h === h && aspect.preset === preset;
+  aspect.preset = preset; aspect.w = w; aspect.h = h;
+  AR = w / h; ASPX = AR >= 1 ? 1 : AR; ASPY = AR >= 1 ? 1 / AR : 1;
+  $('anote').textContent = (note ? note + ' ' : '') + 'Any W : H from 1 : 4 to 4 : 1. The simulation keeps ripples, cracks and edges round at every ratio.';
+  document.querySelector('.stage').style.setProperty('--ar', String(AR));
+  showAspect();
+  if (same && !opts.force) return true;
+  if (!buildFields()) return false;
+  if (proceduralMode) useProcedural(); else buildLayers();
+  restart();
+  if (!opts.noRender) renderFromAspect();
+  showRender(); syncValues();
+  return true;
+}
+document.querySelectorAll('[data-aspect]').forEach((b) => b.addEventListener('click', () => { const a = ASPECTS[b.dataset.aspect]; setAspect(a[0], a[1], b.dataset.aspect); }));
+const customAspect = () => setAspect($('nAspW').value, $('nAspH').value, 'custom');
+$('nAspW').addEventListener('change', customAspect);
+$('nAspH').addEventListener('change', customAspect);
+
+function showFit() {
+  document.querySelectorAll('[data-fit]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.fit === fit.mode ? 'true' : 'false'));
+  $('sFX').value = fit.x; $('sFY').value = fit.y;
+  $('oFX').textContent = fit.x.toFixed(2); $('oFY').textContent = fit.y.toFixed(2);
+  $('sFX').closest('.ctl').classList.toggle('off', fit.mode === 'stretch'); $('sFY').closest('.ctl').classList.toggle('off', fit.mode === 'stretch');
+}
+let fitTimer = 0;
+function setFit(mode, x, y, immediate) {
+  if (mode != null) fit.mode = mode;
+  if (x != null) fit.x = clamp(parseFloat(x) || 0, -1, 1);
+  if (y != null) fit.y = clamp(parseFloat(y) || 0, -1, 1);
+  showFit(); syncValues();
+  clearTimeout(fitTimer);
+  const go = () => { if (!proceduralMode) buildLayers(); };
+  if (immediate) go(); else fitTimer = setTimeout(go, 120);   // a TIFF re-fit can take a moment: wait for the slider to rest
+}
+document.querySelectorAll('[data-fit]').forEach((b) => b.addEventListener('click', () => setFit(b.dataset.fit, null, null)));
+$('sFX').addEventListener('input', (e) => setFit(null, e.target.value, null));
+$('sFY').addEventListener('input', (e) => setFit(null, null, e.target.value));
 
 // Console hook for a real events.json (array of {t, pitch, vel}).
 window.XANADU = {
@@ -1959,6 +2423,16 @@ window.XANADU = {
   params,
   light,
   get fieldRes() { return fieldRes; },
+  get fieldSizes() { return { sim: [simW, simH], field: [fieldW, fieldH], crack: [crackW, crackH], canvas: [canvas.width, canvas.height], layers: [varW, varH, var16 ? 16 : 8] }; },
+  aspect, fit, renderSet,
+  setAspect, setFit, loadFiles, decodeTIFF,
+  readMask() {                       // test hook: the shown erosion depth, one float per texel (needs a 32-bit mask)
+    const a = new Float32Array(fieldW * fieldH * 4);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, mask.cur.fbo);
+    if (f32) gl.readPixels(0, 0, fieldW, fieldH, gl.RGBA, gl.FLOAT, a);
+    return { w: fieldW, h: fieldH, depth: Float32Array.from({ length: fieldW * fieldH }, (_, i) => a[i * 4 + 1]) };
+  },
+  get sources() { return sources; },
   setEvents(list) { EVENTS = list.map(dropFromEvent).sort((a, b) => a.t - b.t); restart(); },
   setAuto,
   applyLiquid: applySurface,
@@ -1972,6 +2446,10 @@ window.XANADU = {
    Start
    ====================================================================== */
 try {
+  // debug: #aspect=16:9 (or any W:H) sets the canvas aspect before anything else is built
+  { const am = /[#?&]aspect=([0-9.]+):([0-9.]+)/.exec(location.href);
+    if (am) { const key = am[1] + ':' + am[2]; setAspect(parseFloat(am[1]), parseFloat(am[2]), ASPECTS[key] ? key : 'custom', { force: true, noRender: false }); } }
+  showAspect(); showFit(); showRender();
   useProcedural();
   restart();
   applySurface('mercury');
