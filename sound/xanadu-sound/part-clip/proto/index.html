@@ -39,7 +39,7 @@ input[type=file]{display:none}
 .note{color:var(--dim);font-size:12px;margin:2px 0 12px}
 footer{padding:14px 0 0;color:var(--dim);font-size:11.5px;letter-spacing:.03em;text-align:center}
 .row.wrap{flex-wrap:wrap}
-.row.wrap button{flex:1 1 calc(33% - 6px)}
+.row.wrap button,.row.wrap .filebtn{flex:1 1 calc(33% - 6px)}
 .ctl.rnd{grid-template-columns:92px 1fr 92px}
 input[type=number],input[type=text],select{width:100%;min-height:36px;font:inherit;font-size:15px;color:var(--fg);background:#101114;border:1px solid #30343a;border-radius:8px;padding:4px 8px}
 .row.asp{flex-wrap:wrap}
@@ -102,6 +102,8 @@ pre#advNum{margin:0 0 8px;padding:10px;font:12px/1.5 ui-monospace,SFMono-Regular
         <button class="sm" type="button" data-surface="lead" aria-pressed="false">Lead</button>
         <button class="sm" type="button" data-surface="rust" aria-pressed="false">Rusted iron</button>
         <button class="sm" type="button" data-surface="bronze" aria-pressed="false">Tarnished bronze</button>
+        <button class="sm" type="button" data-surface="sand" aria-pressed="false">Sand</button>
+        <button class="sm" type="button" data-surface="dust" aria-pressed="false">Dust</button>
       </div>
       <p class="note" id="fnote"></p>
       <div class="grp">Aspect (a change rebuilds the fields and restarts the piece)</div>
@@ -189,6 +191,13 @@ pre#advNum{margin:0 0 8px;padding:10px;font:12px/1.5 ui-monospace,SFMono-Regular
       <div class="ctl" id="cRCrack"><label for="sRCrack">Relief crack</label><input id="sRCrack" type="range" min="0" max="1" step="0.01" value="0"><output id="oRCrack"></output></div>
       <p class="note" id="rnote2">Layer bump: the relief of each layer's own height map (a solid shades it like the bump; a liquid shows it faintly through the film, on the image only). Relief wear: ridges (light) erode faster, valleys (dark) slower, in both families. Relief crack (solids): cracks lean toward valleys. All three read the layer at the surface and, on a solid, the medium's height texture; with no height map loaded they change nothing.</p>
       <p class="note" id="rcnote" hidden>relief crack steers the cracks of solid surfaces only</p>
+      <div id="granGroup" hidden>
+        <div class="grp">Granular (sand, dust: live, change at any time)</div>
+        <div class="ctl"><label for="sRepose">Repose angle</label><input id="sRepose" type="range" min="15" max="45" step="1" value="34"><output id="oRepose"></output></div>
+        <div class="ctl"><label for="sGrSize">Grain size</label><input id="sGrSize" type="range" min="0.5" max="4" step="0.1" value="2"><output id="oGrSize"></output></div>
+        <div class="ctl"><label for="sGrCon">Grain contrast</label><input id="sGrCon" type="range" min="0" max="0.5" step="0.01" value="0.18"><output id="oGrCon"></output></div>
+        <p class="note">Repose angle: the steepest slope a pile keeps; steeper grains slide (the angle of the rendered heightfield, Depth scale included). Grain size: noise period in pixels at 1024. The picture is the sand: an impact moves grains, with their colours, from the crater to its rim. Wavelength and Ring count set the crater radius (as a drop's footprint on a liquid), Energy its depth.</p>
+      </div>
       <div class="grp">Textures (kept when the surface changes; max 2048 per side)</div>
       <div id="texSolid">
         <div class="texrow"><span class="tl">Albedo</span><label class="filebtn" for="fTexAlbedo">Load</label><input id="fTexAlbedo" type="file" accept="image/*,.tif,.tiff,.png,.jpg,.jpeg" data-slot="albedo"><button type="button" data-clear="albedo">Clear</button></div>
@@ -199,6 +208,7 @@ pre#advNum{margin:0 0 8px;padding:10px;font:12px/1.5 ui-monospace,SFMono-Regular
         <p class="note tex" id="tnRoughness"></p>
         <div class="ctl"><label for="sBump">Bump strength</label><input id="sBump" type="range" min="0" max="2" step="0.05" value="1"><output id="oBump"></output></div>
       </div>
+      <p class="note" id="texNone" hidden>no slots for this family</p>
       <div id="texLiquid" hidden>
         <div class="texrow"><span class="tl">Brushing</span><label class="filebtn" for="fTexBrushing">Load</label><input id="fTexBrushing" type="file" accept="image/*,.tif,.tiff,.png,.jpg,.jpeg" data-slot="brushing"><button type="button" data-clear="brushing">Clear</button></div>
         <p class="note tex" id="tnBrushing"></p>
@@ -224,10 +234,12 @@ pre#advNum{margin:0 0 8px;padding:10px;font:12px/1.5 ui-monospace,SFMono-Regular
     <details open>
       <summary>Values</summary>
       <p class="note">Copy these values into the project file, or save them as a file. Images and textures are not saved.</p>
-      <div class="row">
+      <div class="row wrap">
         <button id="bSave" type="button">Save settings</button>
-        <label class="filebtn" for="fLoad" title="Restores every slider, the surface, light, thickness, aspect, fit, render, seed and impact from a xanadu-settings.json">Load settings</label>
+        <label class="filebtn" for="fLoad" title="Restores every slider, the surface, light, thickness, aspect, fit, render, seed and impact from a xanadu-settings.json; the piece restarts">Load settings</label>
         <input id="fLoad" type="file" accept=".json,application/json">
+        <label class="filebtn" for="fApply" title="Patch: applies only the keys the file holds and leaves everything else as it is. The piece restarts only if the file holds a key that needs a rebuild (surface, aspect, fit, seed, granular.map); sliders, light, thickness, render, impact and granular.live change live">Apply settings</label>
+        <input id="fApply" type="file" accept=".json,application/json">
       </div>
       <p class="note" id="setmsg" role="status" hidden></p>
       <textarea id="json" readonly rows="46" spellcheck="false" aria-label="Current parameter set as JSON"></textarea>
@@ -269,6 +281,7 @@ const DROP_AMP = 0.8;       // impulse depth at the reference size
 const EDGE_DAMP = 0.07;     // border sponge, per iteration at 2 iterations/substep
 const MIN_LAM  = 6 / GRID;  // smallest effective wavelength (6 cells) to keep the ring resolved
 const SURFACE_TONE = [140, 144, 150];   // ground colour of variants; letterbox uses the same
+let groundTone = SURFACE_TONE;          // the active surface's ground colour: SURFACE_TONE for liquids and solids, the granular surfaces' own tone (see GRANULARS)
 
 const $ = (id) => document.getElementById(id);
 const clamp01 = (x) => Math.min(1, Math.max(0, x));
@@ -646,7 +659,7 @@ function makeProceduralVariant(v, W, H0) {     // W x H0 canvas; the silhouette 
   // 3) ground + soft silhouette
   const c = document.createElement('canvas'); c.width = W; c.height = H0;
   const x = c.getContext('2d'); x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high';
-  const b = P.bgShift, T = SURFACE_TONE;
+  const b = P.bgShift, T = groundTone;
   const gr = x.createLinearGradient(0, 0, W * 0.3, H0);
   gr.addColorStop(0, `rgb(${T[0] + 14 + b},${T[1] + 14 + b},${T[2] + 14 + b})`);
   gr.addColorStop(1, `rgb(${T[0] - 12 + b},${T[1] - 12 + b},${T[2] - 12 + b})`);
@@ -1285,6 +1298,255 @@ void main(){
   outC = vec4(col, 1.0);
 }`;
 
+/* ======================================================================
+   GRANULAR family (A9, pass 3a): Sand and Dust. The image itself is the sand (ruling, Bekir 1 Nov 2026, 17:08): the pixels are grains, the
+   layers are four differently coloured beds, and grains that leave a place carry their colour to another one.
+   No wave simulation (like the solid), no damping slider, no bevel and no lip at the edge of the eroded bed (the rim is the lip now).
+   Fields, all at the erosion field size (fieldW x fieldH, FIELD_RES long side, square texels):
+     mask  (as before)  .x eroded depth target, .y shown, depth units: how far the top of the BED lies below the original surface
+     dep   (new, RGBA16F ping-pong)  .x deposit height, depth units >= 0;  .yzw colour of the grains on top (display-referred 0..1); empty = (0,0,0,0)
+   The deposit sits ON the eroded surface: the visible height of a texel is  H = dep.x - mask.y  (depth units, 0 = the original surface).
+   DEPTH -> LENGTH (stated once, used by the repose slope and the display normals): one depth unit is  depthLen = Depth scale x DEPTH_UNIT  long-side
+   units of height (the solid's heightfield, depthAt(): uv-height = shown depth x uDepthH; uv and long-side units are the same length for a height). One
+   mask texel is 1 / fieldRes long-side units wide. So a slope of dH depth units per texel is the real slope dH x depthLen x fieldRes.
+   Per substep: [impact -> deposit pass (only while an event is building)] -> mask pass (the crater) -> REPOSE_ITER repose iterations (while any deposit exists).
+   ====================================================================== */
+const MAXS         = 4;      // strikes whose thrown grains can be building at once (each carries NTHROW discs in the deposit shader's uniforms); a fifth drops its discs, never its rim
+const NTHROW       = 12;     // thrown grains per strike
+const REPOSE_ITER  = 2;      // repose iterations per substep
+const REPOSE_K     = 0.5;    // fraction of the excess slope e moved per iteration = REPOSE_K x e / 2 to each lower neighbour; <= 0.5 is the usual stable choice for a 4-neighbour relaxation (a texel with four lower neighbours sends 4 x K x e / 2 <= e)
+const REPOSE_Q     = 1 / 2048;  // flows are whole multiples of this (depth units): a half-float holds multiples of 2^-11 exactly below 1, so sender and receiver add and subtract the same number with no rounding and volume is conserved exactly there (above 1 a result may round by 2^-11, unbiased). A flow under 2 Q / K is not moved: the slope residue is at most 4 Q = 0.002 depth units per texel
+const TOPGRAIN     = 0.25;   // top-grain rule: the largest single inflow takes over the colour of a texel when it is at least this fraction of the texel's deposit after the step
+const DEP_EPS      = 0.002;  // deposit height (depth units) below which a texel counts as bare; the display scatters grains between 0 and 4 x DEP_EPS
+const GRAN_DEPTH_K = 3.0;    // a granular heightfield is drawn (and made to slide: the repose slope uses it too) this many times deeper than the solid's at the same Depth scale: sand is meant to have depth, and a default crater or rim is otherwise 1-2 px
+const GRAN_SHADE_K = 2.0;    // shading only: the heightfield is exaggerated this much vertically in the normal, the occlusion and the cast shadow (a rim of a default strike is 0.3 px high at Depth scale 0.3, a crater wall ~1 degree); the repose slope is NOT exaggerated
+const GRAN_SLOPE_MAX = 1.5;  // shading only: the exaggerated slope is soft-clipped to this (56 degrees), so a pile at its real angle of repose does not go black
+const GRAN_AO_N    = 0.004;  // occlusion: height difference (long-side units) that counts as fully occluded (the solid uses 0.012 for its deeper fissures)
+const GRAN_SH_N    = 0.002;  // cast shadow: height above the light ray (long-side units) that counts as fully shadowed (the solid: 0.004)
+const GRAN = { rScale: 0.25, repose: true, shadeK: GRAN_SHADE_K, depthK: GRAN_DEPTH_K };   // test hooks. rScale: crater radius of a granular impact as a fraction of the liquid footprint it is taken from (makeGranular), so both can be measured. repose: false switches the relaxation off
+// A crater of radius R, depth `a` and feather start f0 (profile = 1 - smoothstep(f0 R, R, r)) holds  Vc = 2 pi a C(f0) R^2  with  C(f0) = f0 / 2 + 0.15 (1 - f0)^2.
+const craterC = (f0) => f0 / 2 + 0.15 * (1 - f0) * (1 - f0);
+
+// Impact deposit pass: one pass per substep while an event is building, deposit ping-pong -> ping-pong. The same telescoping increment as the
+// crater (FS_MASK): in a step a texel gains  tot x (P(age1) - P(age0))  with P = smoothstep of age / build time, so the whole event adds exactly  tot.
+//   rim      radius band [R, R + W), tot = rimPeak x 0.5 (1 - cos(2 pi (r - R) / W)); rimPeak makes the rim hold exactly the crater's volume (makeGranular)
+//   thrown   a strike's NTHROW grains, round heaps: tot = grainPeak x (1 - (d / rho)^2), a paraboloid (volume pi rho^2 / 2 per unit of peak)
+// COLOUR. Never a blend. The grains arriving at a rim texel come from the crater: the colour at the texel mirrored through the rim,
+// r' = R - (r - R) R / W along the same direction (a thrown grain: the crater centre); the colour of a texel (grainCol) is its deposit colour if it
+// holds deposit, else the stack colour at its eroded depth, PICKED (the nearest layer: no crossfade, so the colour is the picture's own, never the mean
+// of two layers). Top-grain rule applied to the event as a whole: the texel takes the incoming colour when the event's total there, tot, is at least
+// TOPGRAIN of the deposit it will hold (the deposit it had before the event plus every event now building), or when it was bare; otherwise it keeps
+// its colour (a small event does not repaint a big pile). Telescoping: the part of this event already in the texel is tot x P(age0).
+const FS_DEP = `#version 300 es
+precision highp float; precision highp sampler2D; precision highp sampler2DArray;
+#define MAXD ${MAXD}
+#define NTHROW ${NTHROW}
+const float DEP_EPS = ${DEP_EPS.toFixed(4)}, TOPGRAIN = ${TOPGRAIN.toFixed(4)};
+uniform sampler2D uDep, uMask;
+uniform sampler2DArray uVar;
+uniform vec4 uMa[MAXD];        // x, y (uv, v up), crater radius R (long-side units), active
+uniform vec4 uMb[MAXD];        // age at step start, age at step end, build time
+uniform vec4 uGp[MAXD];        // rim peak (depth units), band width W (long-side units), index of the first thrown grain in uGd (-1 = none), thrown grain peak
+uniform vec4 uGd[${MAXS * NTHROW}];     // thrown grains: x, y (uv, v up), radius (long-side units)
+uniform vec2 uSz, uAsp;        // field size in texels; physical extent in long-side units
+uniform float uNImg;
+${GLSL_STACK}
+const vec3 WHITE = vec3(0.97, 0.935, 0.87);
+vec3 grainCol(vec2 uv){
+  ivec2 t = clamp(ivec2(uv * uSz), ivec2(0), ivec2(uSz) - 1);
+  vec4 dp = texelFetch(uDep, t, 0);
+  if (dp.x > 0.0) return dp.yzw;
+  float p = clamp(stackPos(texelFetch(uMask, t, 0).x), 0.0, uNImg);
+  float k = floor(p + 0.5);                                        // the layer this depth is nearest to
+  return k > uNImg - 0.5 ? WHITE : textureLod(uVar, vec3(uv.x, 1.0 - uv.y, min(k, uNImg - 1.0)), 0.0).rgb;
+}
+out vec4 o;
+void main(){
+  ivec2 ip = ivec2(gl_FragCoord.xy);
+  vec4 d = texelFetch(uDep, ip, 0);
+  vec2 pp = gl_FragCoord.xy / uSz * uAsp;
+  float incSum = 0.0, totSum = 0.0, sofarSum = 0.0, bestTot = 0.0;
+  vec3 bestCol = vec3(0.0);
+  for (int i = 0; i < MAXD; i++) {
+    vec4 a = uMa[i];
+    if (a.w < 0.5) continue;
+    vec4 b = uMb[i], g = uGp[i];
+    float p0 = smoothstep(0.0, 1.0, clamp(b.x / b.z, 0.0, 1.0)), p1 = smoothstep(0.0, 1.0, clamp(b.y / b.z, 0.0, 1.0));
+    if (p1 <= p0) continue;
+    vec2 cc = a.xy * uAsp, dv = pp - cc;
+    float r = length(dv), R = a.z, W = g.y;
+    if (r > R && r < R + W) {
+      float tot = g.x * 0.5 * (1.0 - cos(6.28318531 * (r - R) / W));
+      if (tot * (p1 - p0) > 0.0) {
+        vec3 col = grainCol((cc + dv / r * (R - (r - R) * R / W)) / uAsp);
+        incSum += tot * (p1 - p0); totSum += tot; sofarSum += tot * p0;
+        if (tot > bestTot) { bestTot = tot; bestCol = col; }
+      }
+    }
+    if (g.z >= 0.0) {
+      int base = int(g.z + 0.5);
+      for (int j = 0; j < NTHROW; j++) {
+        vec4 q = uGd[base + j];
+        float dd = distance(pp, q.xy * uAsp);
+        if (dd >= q.z) continue;
+        float tot = g.w * (1.0 - (dd / q.z) * (dd / q.z));          // a dome: the whole grain is lit and shaded as a heap
+        if (tot * (p1 - p0) <= 0.0) continue;
+        vec3 col = grainCol(a.xy);                                 // the colour at the crater centre
+        incSum += tot * (p1 - p0); totSum += tot; sofarSum += tot * p0;
+        if (tot > bestTot) { bestTot = tot; bestCol = col; }
+      }
+    }
+  }
+  if (incSum > 0.0) {
+    float before = max(d.x - sofarSum, 0.0);
+    if (before < DEP_EPS || bestTot >= TOPGRAIN * (before + totSum)) d.yzw = bestCol;
+    d.x += incSum;
+  }
+  o = d;
+}`;
+
+// Repose: one relaxation iteration, deposit ping-pong -> ping-pong, run REPOSE_ITER times per substep. Only DEPOSIT moves (the bed, the stack, is settled
+// until an impact frees it). H = dep.x - mask.y. A texel sends to each lower 4-neighbour n  q = REPOSE_K x e / 2  with  e = H - Hn - uS, e > 0, uS the slope
+// limit in depth units per texel; the four outflows are scaled together so they never exceed its own deposit, then rounded DOWN to a multiple of
+// REPOSE_Q. Written as a gather: outflow(s) is a pure function of s's own height and its four neighbours', so the receiver evaluates the SENDER's
+// outflow with the same code (it reads the two-hop neighbourhood, 13 texels) and the pair agrees to the last bit: volume is conserved exactly, with no flux
+// texture. A texel with no deposit in it or beside it cannot send or receive: it is copied.
+// Colour: no averaging. If the largest single inflow qmax is at least TOPGRAIN of the deposit the texel holds after the step, the texel takes the colour of
+// that source (ties: left, right, below, above); else it keeps its own. A texel left with no deposit is (0, 0,0,0).
+const FS_REPOSE = `#version 300 es
+precision highp float; precision highp sampler2D;
+const float K = ${REPOSE_K.toFixed(3)}, Q = ${REPOSE_Q.toFixed(8)}, TOPGRAIN = ${TOPGRAIN.toFixed(4)};
+uniform sampler2D uDep, uMask;
+uniform vec2 uSz;
+uniform float uS;              // slope limit: tan(repose angle) x (texel length / depth length), depth units per texel
+const ivec2 N[4] = ivec2[4](ivec2(-1, 0), ivec2(1, 0), ivec2(0, -1), ivec2(0, 1));
+bool inside(ivec2 p){ return p.x >= 0 && p.y >= 0 && p.x < int(uSz.x) && p.y < int(uSz.y); }
+float Hof(ivec2 p){ return texelFetch(uDep, p, 0).x - texelFetch(uMask, p, 0).y; }
+vec4 outflow(ivec2 s){          // what texel s sends to its left, right, lower, upper neighbour
+  float dx = texelFetch(uDep, s, 0).x;
+  if (!(dx > 0.0)) return vec4(0.0);
+  float H = dx - texelFetch(uMask, s, 0).y;
+  vec4 q = vec4(0.0);
+  for (int k = 0; k < 4; k++) {
+    ivec2 n = s + N[k];
+    if (!inside(n)) continue;
+    float e = H - Hof(n) - uS;
+    if (e > 0.0) q[k] = K * e * 0.5;
+  }
+  float tot = q.x + q.y + q.z + q.w;
+  if (tot > dx) q *= dx / tot;
+  return floor(q / Q) * Q;
+}
+out vec4 o;
+void main(){
+  ivec2 ip = ivec2(gl_FragCoord.xy);
+  vec4 d = texelFetch(uDep, ip, 0);
+  bool anyDep = d.x > 0.0;
+  for (int k = 0; k < 4; k++) { ivec2 n = ip + N[k]; if (inside(n) && texelFetch(uDep, n, 0).x > 0.0) anyDep = true; }
+  if (!anyDep) { o = d; return; }
+  vec4 mine = outflow(ip);
+  vec4 inq = vec4(0.0);          // inflow from the left, right, lower, upper neighbour: that neighbour's outflow toward us (its right, left, upper, lower)
+  const int OPP[4] = int[4](1, 0, 3, 2);
+  for (int k = 0; k < 4; k++) { ivec2 n = ip + N[k]; if (inside(n)) inq[k] = outflow(n)[OPP[k]]; }
+  float nx = d.x - (mine.x + mine.y + mine.z + mine.w) + (inq.x + inq.y + inq.z + inq.w);
+  float qmax = max(max(inq.x, inq.y), max(inq.z, inq.w));
+  vec3 col = d.yzw;
+  if (qmax > 0.0 && qmax >= TOPGRAIN * nx) {
+    int kb = inq.x >= qmax ? 0 : (inq.y >= qmax ? 1 : (inq.z >= qmax ? 2 : 3));
+    col = texelFetch(uDep, ip + N[kb], 0).yzw;
+  }
+  if (nx <= 1e-6) { nx = 0.0; col = vec3(0.0); }
+  o = vec4(nx, col);
+}`;
+
+// Granular display. Matte sand: no specular (a granular surface scatters, it does not mirror). Colour of a pixel: the deposit's colour where the texel holds
+// deposit (x > 0), else the stack colour at the shown eroded depth (stackCol + the wide layerMix crossfade, as the solid; no bevel, no lip). A thin deposit
+// (0 .. 4 DEP_EPS) is scattered: the grain noise decides pixel by pixel, so it reads as loose grains, not a tint. Grain: a 2-octave value noise of period
+// grainSize px at 1024 (offset by the piece's map seed, constant in time) times +-grainContrast, plus a 1-px hash speckle at a third of it. Light: diffuse of the
+// Light block on the normal of H (corner gradients of the field, interpolated: smooth between texels), ambient from the block, the solid's occlusion and cast
+// shadow taps on H, and the per-layer height map's bump as on the solid (not where deposit lies on it).
+const FS_DISPLAY_GRAN = `#version 300 es
+precision highp float; precision highp sampler2D; precision highp sampler2DArray;
+uniform sampler2D uDep;
+uniform float uDepthH, uGrainPx, uGrCon, uShadeK;   // uDepthH = long-side units of height per depth unit; uShadeK = GRAN.shadeK
+uniform vec2 uGrOff;
+in vec2 vUv; out vec4 outC;
+const float DEP_EPS = ${DEP_EPS.toFixed(4)}, SLOPE_MAX = ${GRAN_SLOPE_MAX.toFixed(2)}, AO_N = ${GRAN_AO_N.toFixed(4)}, SH_N = ${GRAN_SH_N.toFixed(4)};
+
+${GLSL_COMMON}
+const vec2 AOD[6] = vec2[6](vec2(1.0, 0.0), vec2(0.5, 0.866), vec2(-0.5, 0.866), vec2(-1.0, 0.0), vec2(-0.5, -0.866), vec2(0.5, -0.866));
+vec3 stackCol(float pp, vec2 iuv){               // the solid's stackCol, wide crossfade only
+  pp = clamp(pp, 0.0, uNImg);
+  float fi = floor(pp), f = pp - fi, fb = min(fi + 1.0, uNImg);
+  vec3 a = texture(uVar, vec3(iuv, min(fi, uNImg - 1.0))).rgb;
+  vec3 b = texture(uVar, vec3(iuv, min(fb, uNImg - 1.0))).rgb;
+  a = (fi > uNImg - 0.5) ? WHITE : a;
+  b = (fb > uNImg - 0.5) ? WHITE : b;
+  return mix(a, b, layerMix(f, -1.0));
+}
+float Hd(ivec2 p){                                // surface height, depth units (deposit minus eroded depth)
+  p = clamp(p, ivec2(0), ivec2(uGrid) - 1);
+  return texelFetch(uDep, p, 0).x - texelFetch(uMask, p, 0).y;
+}
+float hLen(vec2 q){ return Hd(ivec2(q * uGrid)) * uDepthH * uShadeK; }   // height in long-side units (exaggerated by uShadeK), nearest texel: the occlusion and shadow taps
+vec2 gradH(vec2 uv){                              // dH per texel (depth units): central differences at the four texel corners around uv, interpolated
+  vec2 fp = uv * uGrid - 0.5, fl = floor(fp), f = fp - fl;
+  ivec2 i0 = ivec2(fl);
+  float h[16];
+  for (int j = 0; j < 4; j++) for (int i = 0; i < 4; i++) h[j * 4 + i] = Hd(i0 + ivec2(i - 1, j - 1));
+  vec2 g[4];
+  for (int b = 0; b < 2; b++) for (int a = 0; a < 2; a++) {
+    int cx = 1 + a, cy = 1 + b;
+    g[b * 2 + a] = 0.5 * vec2(h[cy * 4 + cx + 1] - h[cy * 4 + cx - 1], h[(cy + 1) * 4 + cx] - h[(cy - 1) * 4 + cx]);
+  }
+  return mix(mix(g[0], g[1], f.x), mix(g[2], g[3], f.x), f.y);
+}
+void main(){
+  vec2 uv = vUv;
+  vec2 up = uv * uAsp;
+  vec2 iuv = vec2(uv.x, 1.0 - uv.y);
+  ivec2 ft = clamp(ivec2(uv * uGrid), ivec2(0), ivec2(uGrid) - 1);
+  vec4 dp = texelFetch(uDep, ft, 0);
+  float p0 = clamp(stackPos(maskAt(uv)), 0.0, uNImg);
+  vec3 bed = stackCol(p0, iuv);
+  // grain
+  vec2 gp = up * (1024.0 / uGrainPx) + uGrOff;
+  float gn = 0.65 * vnoise(gp) + 0.35 * vnoise(gp * 2.17 + vec2(17.1, 9.2));
+  float speck = hash12(gl_FragCoord.xy);
+  float cover = (dp.x > 0.0 && gn <= clamp(dp.x / (4.0 * DEP_EPS), 0.0, 1.0)) ? 1.0 : 0.0;
+  vec3 alb = mix(bed, dp.yzw, cover);
+  alb *= 1.0 + (gn - 0.5) * 2.0 * uGrCon + (speck - 0.5) * 2.0 * uGrCon / 3.0;
+  alb *= alb;                                                       // to linear (approx.)
+  // relief: the normal of H (+ the layer map's bump on the bare bed)
+  vec2 gr = gradH(uv) * (uDepthH * uGridL);                          // the real slope of the heightfield
+  float gm = length(gr) * uShadeK;
+  vec2 gs = gr * uShadeK / sqrt(1.0 + gm * gm / (SLOPE_MAX * SLOPE_MAX));   // exaggerated, soft-clipped
+  if (uAnyLH > 0.5) {
+    float fiR = floor(p0), fbR = min(fiR + 1.0, uNImg);
+    vec2 hsR = max(1.0 / uLHSz, fwidth(uv));
+    gs += mix(lhGrad(fiR, iuv, hsR), lhGrad(fbR, iuv, hsR), layerMix(p0 - fiR, -1.0)) * (LH_H * uLBump * (1.0 - cover));
+  }
+  vec3 nL = normalize(vec3(-gs, 1.0));
+  vec3 L = uLdir;
+  vec3 dif = vec3(uAmb) + 0.75 * uLcol * max(dot(nL, L), 0.0);
+  // occlusion and cast shadow on H, the solid's taps (ao: 6 around at 3.5 texels; shadow: 5 along the light, reach stretched for a low light)
+  float h0 = Hd(ft) * uDepthH * uShadeK;
+  float ao = 0.0;
+  for (int i = 0; i < 6; i++) ao += max(hLen(uv + AOD[i] * 3.5 / uGrid) - h0, 0.0);
+  ao = clamp(ao / 6.0 / AO_N, 0.0, 1.0);
+  float sh = 0.0;
+  float reach = clamp(0.8333 / uTanE, 1.0, 3.0);
+  for (int i = 1; i <= 5; i++) {
+    float d = 2.0 * float(i) * reach / uGridL;
+    sh = max(sh, clamp((hLen(uv + uLaz * d / uAsp) - h0 - d * uTanE) / SH_N, 0.0, 1.0));
+  }
+  float shade = (1.0 - 0.6 * ao) * (1.0 - 0.6 * sh * min(uLint, 1.0));
+  vec3 col = alb * dif * shade;
+  col = sqrt(max(col, 0.0));
+  col += (hash12(gl_FragCoord.xy + 7.7) - 0.5) / 255.0;
+  outC = vec4(col, 1.0);
+}`;
+
 function compile(type, src) {
   const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
   if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error('Shader compile: ' + gl.getShaderInfoLog(s));
@@ -1303,7 +1565,7 @@ function makeProg(fs, names, vs) {
 const LIGHT_U = ['uTh', 'uEdgeSharp', 'uLipTex', 'uLdir', 'uLaz', 'uTanE', 'uLcol', 'uAmb', 'uLint', 'uEnvRot'];   // shared by both display shaders
 const RELIEF_U = ['uLHgt', 'uHasLH', 'uAnyLH', 'uLBump', 'uLHSz'];                                                  // per-layer height maps, read by both display shaders
 const MASK_RELIEF_U = ['uLHgt', 'uHgtM', 'uTh', 'uNImg', 'uHasLH', 'uRWear', 'uLHLod', 'uHasHM', 'uHMLod'];            // relief wear, read by both mask shaders
-let progSim, progTens, progMask, progDerive, progDisplay, progCrack, progFrag, progMaskS, progDisplayS;
+let progSim, progTens, progMask, progDerive, progDisplay, progCrack, progFrag, progMaskS, progDisplayS, progDep, progRepose, progDisplayG;
 try {
   progSim = makeProg(FS_SIM, ['uState', 'uC2', 'uDamp', 'uEdge', 'uSpread', 'uRs', 'uSz', 'uAsp', 'uDa', 'uDb']);
   progTens = makeProg(FS_TENS, ['uState', 'uSz', 'uTens']);
@@ -1318,6 +1580,9 @@ try {
   progDisplayS = makeProg(FS_DISPLAY_SOLID, ['uCrack', 'uFrag', 'uMask', 'uVar', 'uReflect', 'uRefract', 'uIdle', 'uTime', 'uCrackRes', 'uCrackD', 'uNImg', 'uGrid', 'uGridL', 'uAsp',
     'uFPow', 'uSpecPow', 'uBrushStr', 'uBrushDir', 'uBevel', 'uPitAmt', 'uDepthH', 'uTint', 'uColA', 'uColB', 'uColC', 'uColD', 'uColP', 'uCov', 'uSc',
     'uAlbT', 'uHgtT', 'uRghT', 'uHasAlb', 'uHasHgt', 'uHasRgh', 'uBump', 'uHgtSz'].concat(LIGHT_U, RELIEF_U));
+  progDep = makeProg(FS_DEP, ['uDep', 'uMask', 'uVar', 'uMa', 'uMb', 'uGp', 'uGd', 'uSz', 'uAsp', 'uNImg', 'uTh']);
+  progRepose = makeProg(FS_REPOSE, ['uDep', 'uMask', 'uSz', 'uS']);
+  progDisplayG = makeProg(FS_DISPLAY_GRAN, ['uDep', 'uMask', 'uVar', 'uNImg', 'uGrid', 'uGridL', 'uAsp', 'uDepthH', 'uGrainPx', 'uGrCon', 'uGrOff', 'uShadeK'].concat(LIGHT_U, RELIEF_U));
 } catch (err) { fail(String(err.message || err)); return; }
 
 const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
@@ -1347,7 +1612,8 @@ function makePair(w, h, internal, type, filter) {
 // The erosion mask is 32-bit where available (continuous values accumulate small increments; read with texelFetch + manual bilinear in the
 // display shader, so no float-linear extension is needed). It has its own long side, `fieldRes` (FIELD_RES = 512): 512 only where textures
 // of 4096 exist and the 32-bit target is complete at that size, else the old 256. The probes run once; a later aspect change reuses their result.
-let state, mask, derived, crackMap, incMap, fragMap;
+let state, mask, derived, crackMap, incMap, fragMap, dep;      // dep: the granular deposit pair (null where it cannot be made)
+let granularOk = false;
 let f32 = false, fieldRes = GRID, fieldsProbed = false;
 let simW = GRID, simH = GRID, fieldW = GRID, fieldH = GRID, crackW = CRACK_RES, crackH = CRACK_RES;
 const disposeTarget = (q) => { gl.deleteFramebuffer(q.fbo); gl.deleteTexture(q.tex); };
@@ -1357,7 +1623,7 @@ function makeMaskPair(res) {
   return makePair(w, h, gl.RGBA16F, gl.HALF_FLOAT, gl.NEAREST);
 }
 function buildFields() {
-  [state, mask].forEach((pr) => { if (pr) pr.t.forEach(disposeTarget); });
+  [state, mask, dep].forEach((pr) => { if (pr) pr.t.forEach(disposeTarget); });
   [derived, crackMap, incMap, fragMap].forEach((q) => { if (q) disposeTarget(q); });
   [simW, simH] = dimsFor(GRID);
   state = null;
@@ -1379,6 +1645,11 @@ function buildFields() {
   incMap = makeTarget(fieldW, fieldH, gl.RGBA8, gl.UNSIGNED_BYTE, gl.NEAREST);
   fragMap = makeTarget(crackW, crackH, gl.RGBA8, gl.UNSIGNED_BYTE, gl.LINEAR);   // spall plates: height, tilt, edge distance
   if (!crackMap.ok || !incMap.ok || !fragMap.ok) { fail('Crack framebuffers are incomplete on this device.'); return false; }
+  // Granular family: the deposit field (see GRANULAR), one RGBA16F ping-pong pair at the mask size, the only new target. A device that cannot render to
+  // it refuses the family (applySurface says so); everything else is unaffected.
+  dep = makePair(fieldW, fieldH, gl.RGBA16F, gl.HALF_FLOAT, gl.NEAREST);
+  granularOk = dep.ok;
+  if (!dep.ok) { dep.t.forEach(disposeTarget); dep = null; }
   fieldsProbed = true;
   return true;
 }
@@ -1456,7 +1727,7 @@ function fitPlan(sw, sh, W, H) {
 function fitCanvas(img, W, H, plan, fill) {      // 8-bit image (PNG, JPEG, anything the browser decodes) -> W x H canvas, letterbox in the surface tone (or `fill`, 0..255 rgb); plan: a fitPlan (default: the fit rule)
   const c = document.createElement('canvas'); c.width = W; c.height = H;
   const x = c.getContext('2d');
-  const tn = fill || SURFACE_TONE;
+  const tn = fill || groundTone;
   x.fillStyle = `rgb(${tn[0]},${tn[1]},${tn[2]})`;
   x.fillRect(0, 0, W, H);
   const p = plan || fitPlan(img.naturalWidth || img.width, img.naturalHeight || img.height, W, H);
@@ -1467,7 +1738,7 @@ function fitCanvas(img, W, H, plan, fill) {      // 8-bit image (PNG, JPEG, anyt
 // Decoded TIFF -> Float32 RGBA (W x H, 0..1) through the fit plan. Separable tent filter of radius max(footprint, 1) source pixels: a
 // bilinear lookup when enlarging, an area-weighted average when reducing. Alpha is composited over the surface tone (or `fill`, 0..255 rgb). Cost ~ source pixels.
 function resampleRaw(img, W, H, p, fill) {
-  const tone = fill || SURFACE_TONE;
+  const tone = fill || groundTone;
   const out = new Float32Array(W * H * 4);
   for (let i = 0; i < W * H; i++) { out[4 * i] = tone[0] / 255; out[4 * i + 1] = tone[1] / 255; out[4 * i + 2] = tone[2] / 255; out[4 * i + 3] = 1; }
   const sw = img.width, sh = img.height, spp = img.spp, data = img.data, maxv = img.bits === 16 ? 65535 : 255;
@@ -1837,6 +2108,17 @@ const SOLIDS = {
             cover: [0.16, 0.42], patchTh: [0.44, 0.62], patchAmt: 0.85, pitAmt: 0.40, scaleA: 3.5, scaleB: 10.0, scaleC: 6.0,
             refract: 0.5, idle: 0.0040, time: 1 }
 };
+// GRANULARS: sand and dust (A9). The picture is the sand; these numbers are the grain's character.
+//   repose        angle of repose, degrees: the steepest slope a pile of deposit keeps (the Repose angle slider's default)
+//   grain         grain size: period of the grain noise in pixels at a 1024 canvas (Grain size slider's default)
+//   contrast      brightness modulation of the grain, +- (Grain contrast slider's default)
+//   tone          ground colour of the procedural placeholder layers when there is no image (display-referred 0..255): sand = SURFACE_TONE lifted 10 % and
+//                 warmed (x 1.10, blue pulled down), dust = SURFACE_TONE a little lighter (x 1.06)
+//   reflect, refract, idle, time   the four override sliders' defaults; a granular surface shows none of the first three (matte, no refraction, no ripple)
+const GRANULARS = {
+  sand: { name: 'Sand', family: 'granular', repose: 34, grain: 2.0, contrast: 0.18, tone: [154, 152, 132], reflect: 0, refract: 0, idle: 0, time: 1 },
+  dust: { name: 'Dust', family: 'granular', repose: 24, grain: 1.2, contrast: 0.10, tone: [148, 153, 159], reflect: 0, refract: 0, idle: 0, time: 1 }
+};
 const SURFACE_ALIAS = { 'rusted-iron': 'rust', iron: 'rust', 'tarnished-bronze': 'bronze', 'molten-gold': 'gold' };
 
 /* ======================================================================
@@ -1869,7 +2151,8 @@ function kelvinRGB(K) {
 }
 
 let liquidKey = 'mercury', liquid = LIQUIDS.mercury;
-let family = 'liquid', solid = null, solidKey = '';      // active surface family; `liquid` stays the last chosen liquid, `solid` the active solid
+let family = 'liquid', solid = null, solidKey = '';      // active surface family; `liquid` stays the last chosen liquid, `solid` the active solid, `granular` the active granular surface
+let granular = null, granularKey = '';
 const params = Object.assign({ reflect: liquid.fresnelBase, refract: liquid.refract, idle: liquid.idle, time: liquid.time }, ARTIST);
 let playing = true, autoEvents = false, stepCount = 0, acc = 0, evIdx = 0, evCount = 0;
 let manualQ = [], manualN = 0, tapN = 0;
@@ -2515,12 +2798,101 @@ function maskSolidPass() {
   mask.flip();
 }
 
+/* ----------------------------------------------------------------------
+   GRANULAR events. An impact is one record in the same `drops` list the liquid uses (so the mask pass, fillDrops and the slot rules are shared), with
+   no wave: amp 0, and the front speed c = GRAN_C so the crater does not wait for a ring (the mask pass divides the radius by c: ~0).
+     crater   the mask target gains  ero x (1 - smoothstep(f0 R, R, r))  over the build time T = max(0.04, Attack + duration) (smoothstep, telescoping)
+              drop:   R = the liquid drop's footprint radius (makeDrop Rrev: 1.7 sigma of its packet, from Energy, Wavelength and Ring count),
+                      depth ero = the drop's (min(1, max(0.05, 0.5 x energy / 0.5)))
+              strike: R = the liquid strike's swell footprint (makeStrike Rrev: 1.7 x the swell sigma, from area and Energy), depth = 0.5 x the drop's
+              both radii x GRAN.rScale (see below)
+     rim      band [R, R + W], W = 0.5 R (drop) / 1.0 R (strike), raised cosine rimP x 0.5 (1 - cos(2 pi (r - R) / W)); built over the same T as the crater.
+     VOLUME. Crater (radial integral of ero x profile):   Vc = 2 pi ero C(f0) R^2,  C(f0) = f0 / 2 + 0.15 (1 - f0)^2   (f0 = feather start)
+             Rim (radial integral):                        Vr = pi rimP W (R + W / 2)                                        (per unit of peak: pi W (R + W / 2))
+             Thrown grain (strike), a paraboloid of radius rho and peak grainPeak = rimP / 2:   (pi rho^2 / 2) grainPeak
+             rimP = Vc / (pi W (R + W / 2) + 0.5 x sum over the grains of pi rho^2 / 2), so rim + grains hold exactly the crater's volume (verified on
+             the fields in the pass-3a tests). Depth units are the same for the crater and the deposit, so a rim of 0.3 beside a crater of 0.3 is the same step.
+     thrown   NTHROW discs, radius 0.015 .. 0.03 (long-side units), at 1.5 R .. 3 R from the centre, angle / radius / size from the event's seeded stream,
+              mulberry32(hash3(event index, x, y)) (the index counts the granular events of the piece; taps and lists alike, so the same piece gives the
+              same grains). A disc that would fall off the canvas is redrawn (up to 8 times) so the volume stays on the surface.
+   GRAN.rScale. The brief reads "R from the liquid drop's / strike's footprint": 0.34 for a default drop and 0.54 for a strike of area 0.5, so the rim
+   (R .. 1.5 R, R .. 2 R) and the thrown grains (to 3 R) lie mostly beyond the canvas edge of a centred impact. GRAN.rScale scales both radii (default
+   0.25: drop R 0.085, strike R 0.136, grains inside the canvas); 1 is the literal reading. Not saved (a build constant, a test hook).
+   ---------------------------------------------------------------------- */
+const GRAN_C = 1e9;
+let granSeq = 0, depDirty = false, granMapSeed = 1, granOff = [0, 0];
+const aGp = new Float32Array(MAXD * 4), aGd = new Float32Array(MAXS * NTHROW * 4);
+function makeGranular(ev) {
+  const strike = ev.type === 'strike', seq = granSeq++;
+  const base = makeDrop(ev);
+  let R = (strike ? makeStrike(ev)[0].Rrev : base.Rrev) * GRAN.rScale, ero = base.ero * (strike ? 0.5 : 1);
+  const W = (strike ? 1.0 : 0.5) * R, f0 = base.f0, T = Math.max(0.04, params.attack + ev.duration);
+  const x = ev.x, y = 1 - ev.y, ox = x * ASPX, oy = y * ASPY;
+  const Vc = 2 * Math.PI * ero * craterC(f0) * R * R, Vr1 = Math.PI * W * (R + 0.5 * W);
+  let rimP, grainPeak = 0, thrown = null;
+  if (strike) {
+    const rnd = mulberry32(hash3(seq, Math.round(ox * 4096), Math.round(oy * 4096)));
+    let Vd1 = 0;
+    thrown = [];
+    for (let j = 0; j < NTHROW; j++) {
+      let gx = 0, gy = 0, rho = 0;
+      for (let tries = 0; tries < 8; tries++) {
+        const ang = rnd() * 2 * Math.PI, rad = R * (1.5 + 1.5 * rnd());
+        rho = 0.015 + 0.015 * rnd();
+        gx = ox + rad * Math.cos(ang); gy = oy + rad * Math.sin(ang);
+        if (gx >= rho && gx <= ASPX - rho && gy >= rho && gy <= ASPY - rho) break;
+      }
+      thrown.push({ x: gx / ASPX, y: gy / ASPY, rho });
+      Vd1 += 0.5 * Math.PI * rho * rho;
+    }
+    rimP = Vc / (Vr1 + 0.5 * Vd1);
+    grainPeak = 0.5 * rimP;
+  } else rimP = Vc / Vr1;
+  return { x, y, t0: stepCount, amp: 0, lam: 1, sig: 0, att: T, Rrev: R, dur: T, c: GRAN_C, ero, f0, rimP, rimW: W, thrown, grainPeak, strike, Vc };
+}
+// Pack the rim / thrown-grain uniforms of the events that fillDrops marked active (same test); returns whether any event is building.
+function fillGranular() {
+  aGp.fill(0); aGd.fill(0);
+  let ns = 0, building = false;
+  for (let i = 0; i < drops.length; i++) {
+    const d = drops[i];
+    if (!((stepCount - d.t0) * DT < d.dur + d.Rrev / d.c + 0.1)) continue;
+    building = true;
+    let b = -1;
+    if (d.thrown && ns < MAXS) { b = ns * NTHROW; d.thrown.forEach((q, j) => aGd.set([q.x, q.y, q.rho, 0], (b + j) * 4)); ns++; }
+    aGp.set([d.rimP, d.rimW, b, d.grainPeak], i * 4);
+  }
+  return building;
+}
+function depPass() {
+  const P = pass(progDep, dep.nxt);
+  bindTex(0, gl.TEXTURE_2D, dep.cur.tex, P.u.uDep);
+  bindTex(1, gl.TEXTURE_2D, mask.cur.tex, P.u.uMask);
+  bindTex(2, gl.TEXTURE_2D_ARRAY, varTex, P.u.uVar);
+  gl.uniform4fv(P.u.uMa, aMa); gl.uniform4fv(P.u.uMb, aMb); gl.uniform4fv(P.u.uGp, aGp); gl.uniform4fv(P.u.uGd, aGd);
+  gl.uniform2f(P.u.uSz, fieldW, fieldH); gl.uniform2f(P.u.uAsp, ASPX, ASPY); gl.uniform1f(P.u.uNImg, variantN);
+  gl.uniform4f(P.u.uTh, params.th0, params.th1, params.th2, params.th3);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  dep.flip();
+}
+// Slope limit in depth units per texel: tan(angle) x (texel length / depth length). The real angle of the rendered heightfield (see GRANULAR for the units).
+// Depth scale 0 would make every slope infinite; it is held at 0.01 (a limit of ~10 depth units per texel: nothing slides).
+const reposeLimit = () => Math.tan(params.reposeAngle / DEG) / (fieldRes * Math.max(params.dscale, 0.01) * DEPTH_UNIT * GRAN.depthK);
+function reposePass() {
+  const P = pass(progRepose, dep.nxt);
+  bindTex(0, gl.TEXTURE_2D, dep.cur.tex, P.u.uDep);
+  bindTex(1, gl.TEXTURE_2D, mask.cur.tex, P.u.uMask);
+  gl.uniform2f(P.u.uSz, fieldW, fieldH); gl.uniform1f(P.u.uS, reposeLimit());
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  dep.flip();
+}
+
 // One event -> the surface. sweep / blow / flow are stored and ignored (passes 4 / 5); everything else is counted and spawned.
 let ignoredEvents = [], ignoredN = 0;
 function applyEvent(ev) {
   if (!IMPACT_ACTIVE[ev.type]) { ignoredN++; if (ignoredEvents.length < 1000) ignoredEvents.push(ev); return; }
   evCount++;
-  if (family === 'solid') spawnCracks(ev); else makeDrops(ev).forEach(addDrop);
+  if (family === 'solid') spawnCracks(ev); else if (family === 'granular') addDrop(makeGranular(ev)); else makeDrops(ev).forEach(addDrop);
 }
 function substep() {
   const t = stepCount * DT;
@@ -2535,6 +2907,14 @@ function substep() {
     crackPass();
     fragPass();
     maskSolidPass();
+    stepCount++;
+    return;
+  }
+  if (family === 'granular') {                         // no wave simulation: the crater and its rim build, then the deposit slides to its angle of repose
+    fillDrops();
+    if (fillGranular()) { depPass(); depDirty = true; }
+    maskPass();
+    if (depDirty && GRAN.repose) for (let i = 0; i < REPOSE_ITER; i++) reposePass();
     stepCount++;
     return;
   }
@@ -2555,6 +2935,9 @@ function restart() {
   state.t.forEach((t) => clearTarget(t, 0, 0, 0, 1));
   mask.t.forEach((t) => clearTarget(t, 0, 0, 0, 1));
   clearTarget(derived, 0, 0, 0, 1);
+  if (dep) dep.t.forEach((t) => clearTarget(t, 0, 0, 0, 0));
+  granSeq = 0; depDirty = false; granMapSeed = seedVal();
+  { const r = mulberry32(((granMapSeed | 0) * 2654435761 + 0x6A1) >>> 0); granOff = [r() * 500, r() * 500]; }   // the grain noise is offset by the piece's map seed, frozen here
   clearTarget(crackMap, 0, 0, 0, 0); clearTarget(incMap, 0, 0, 0, 1); clearTarget(fragMap, 0, 0, 0, 0);
   cdrops = []; dropSeq = 0; occ.fill(0); occStamp.fill(0); frags = []; fragBorn = 0; testDrop = testDropSpec ? { t: testDropSpec } : null;
   randomOn = false; randomDone = false; randomIdx = 0; randomList = [];
@@ -2637,6 +3020,7 @@ function render() {
   if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
 
   if (family === 'solid') { renderSolid(w, h); return; }
+  if (family === 'granular') { renderGranular(w, h); return; }
   const D = pass(progDerive, derived);
   bindTex(0, gl.TEXTURE_2D, state.cur.tex, D.u.uState);
   gl.uniform2f(D.u.uSz, simW, simH);
@@ -2690,6 +3074,19 @@ function renderSolid(w, h) {
   gl.drawArrays(gl.TRIANGLES, 0, 3);
 }
 
+function renderGranular(w, h) {
+  const P = pass(progDisplayG, null, w, h);
+  bindTex(0, gl.TEXTURE_2D, dep.cur.tex, P.u.uDep);
+  bindTex(1, gl.TEXTURE_2D, mask.cur.tex, P.u.uMask);
+  bindTex(2, gl.TEXTURE_2D_ARRAY, varTex, P.u.uVar);
+  gl.uniform1f(P.u.uNImg, variantN); gl.uniform2f(P.u.uGrid, fieldW, fieldH); gl.uniform1f(P.u.uGridL, fieldRes); gl.uniform2f(P.u.uAsp, ASPX, ASPY);
+  gl.uniform1f(P.u.uDepthH, params.dscale * DEPTH_UNIT * GRAN.depthK);
+  gl.uniform1f(P.u.uShadeK, GRAN.shadeK); gl.uniform1f(P.u.uGrainPx, params.grainSize); gl.uniform1f(P.u.uGrCon, params.grainContrast); gl.uniform2f(P.u.uGrOff, granOff[0], granOff[1]);
+  setLightUniforms(P);
+  setReliefDisplay(P, 3);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+}
+
 let last = 0, hudKey = '', jsonFrag = 0, jsonRand = false;
 function frame(now) {
   const dt = Math.min(Math.max((now - last) / 1000, 0), 0.1); last = now;
@@ -2719,23 +3116,24 @@ function frame(now) {
    ====================================================================== */
 const fmt = { reflect: (v) => v.toFixed(2), refract: (v) => v.toFixed(2), damp: (v) => v.toFixed(4),
               idle: (v) => v.toFixed(4), size: (v) => v.toFixed(2), time: (v) => v.toFixed(2) + 'x',
-              speed: (v) => { if (family === 'solid') return (CRACK_V * v).toFixed(2); const s = simState(); return s.c.toFixed(2) + (s.clamped ? '*' : ''); },
+              speed: (v) => { if (family === 'granular') return 'n/a'; if (family === 'solid') return (CRACK_V * v).toFixed(2); const s = simState(); return s.c.toFixed(2) + (s.clamped ? '*' : ''); },
               wave: (v) => v.toFixed(3), rings: (v) => v.toFixed(1), attack: (v) => v.toFixed(2),
               spread: (v) => (v >= SPREAD_OFF - 1e-9 ? 'off' : v.toFixed(2)), lag: (v) => v.toFixed(2), wear: (v) => v.toFixed(2),
               edgeSharp: (v) => v.toFixed(2), edgeW: (v) => v.toFixed(4), edgeH: (v) => v.toFixed(2),
               th0: (v) => v.toFixed(2), th1: (v) => v.toFixed(2), th2: (v) => v.toFixed(2), th3: (v) => v.toFixed(2), dscale: (v) => v.toFixed(2),
               bump: (v) => v.toFixed(2), brushTile: (v) => v.toFixed(2) + '×',
-              layerBump: (v) => v.toFixed(2), reliefWear: (v) => v.toFixed(2), reliefCrack: (v) => v.toFixed(2) };
+              layerBump: (v) => v.toFixed(2), reliefWear: (v) => v.toFixed(2), reliefCrack: (v) => v.toFixed(2),
+              reposeAngle: (v) => Math.round(v) + '\u00b0', grainSize: (v) => v.toFixed(1) + ' px', grainContrast: (v) => v.toFixed(2) };
 const ids = { size: 'Size', attack: 'Attack', wave: 'Wave', rings: 'Rings', speed: 'Speed', damp: 'Damp', spread: 'Spread',
               lag: 'Lag', wear: 'Wear', edgeSharp: 'ESharp', edgeW: 'EW', edgeH: 'EH', th0: 'Th0', th1: 'Th1', th2: 'Th2', th3: 'Th3', dscale: 'DScale',
               reflect: 'Reflect', refract: 'Refract', idle: 'Idle', time: 'Time', bump: 'Bump', brushTile: 'Tile',
-              layerBump: 'LBump', reliefWear: 'RWear', reliefCrack: 'RCrack' };
+              layerBump: 'LBump', reliefWear: 'RWear', reliefCrack: 'RCrack', reposeAngle: 'Repose', grainSize: 'GrSize', grainContrast: 'GrCon' };
 
 const r3 = (v) => Math.round(v * 1000) / 1000;
 const seedVal = () => { const v = parseInt($('nSeed').value, 10); return Number.isFinite(v) ? Math.max(0, Math.min(999999, v)) : 1; };
 function readout() {
-  const cur = family === 'solid' ? solid : liquid;
-  const o = { surface: cur.name, surfaceKey: family === 'solid' ? solidKey : liquidKey, family };
+  const cur = family === 'solid' ? solid : family === 'granular' ? granular : liquid;
+  const o = { surface: cur.name, surfaceKey: family === 'solid' ? solidKey : family === 'granular' ? granularKey : liquidKey, family };
   if (family === 'liquid') o.liquid = liquid.name;
   o.autoEvents = autoEvents;
   o.randomMode = randomOn ? 'running' : (randomDone ? 'done' : false);
@@ -2748,6 +3146,10 @@ function readout() {
       ' · branch generations ' + Math.max(0, params.rings - 1) + ' x size factor · spalling from size ' + FRAG_S0 + ' · no wave simulation';
     o.crackGrowthSpeed = r3(CRACK_V * params.speed);
     o.fragments = fragBorn;
+    o.damping = null;
+  } else if (family === 'granular') {
+    $('wnote').textContent = 'no wave simulation · crater radius from Wavelength and Ring count (as a drop\u2019s footprint on a liquid) x ' + GRAN.rScale + ' · build time Attack + duration · repose limit ' +
+      reposeLimit().toFixed(3) + ' depth units per texel';
     o.damping = null;
   } else {
     const st = simState();
@@ -2766,6 +3168,9 @@ function readout() {
     bumpStrength: params.bump, brushTile: params.brushTile,
     layerBump: params.layerBump, reliefWear: params.reliefWear, reliefCrack: params.reliefCrack,
     layerHeights: lhFlags.map((f) => f > 0),     // which layers carry a height map in use (the maps themselves are not saved)
+    // granular (A9): ONE block, split by when a key takes effect. map = frozen at piece start (pass 3b adds the cell-map parameters), live = uniforms, change at any time.
+    // map.seed IS the piece seed above (the same number, read from the same field), not a second state.
+    granular: { map: { seed: seedVal() }, live: { reposeAngle: params.reposeAngle, grainSize: params.grainSize, grainContrast: params.grainContrast } },
     textures: { albedo: slots.albedo.has, height: slots.height.has, roughness: slots.roughness.has, brushing: slots.brushing.has, hdri: slots.hdri.has } });   // which slots are filled, not the pixels
   return o;
 }
@@ -2806,6 +3211,16 @@ function advText() {
             'erosion band  ' + BAND_K + ' x core half-width + ' + BAND_MIN + ' uv', 'spalling      size >= ' + FRAG_S0 + ': 2..8 plates, lift 0.006-0.017 uv',
             'defaults      reflect ' + S.fresnelBase + ', refract ' + S.refract + ', idle ' + S.idle + ', time ' + S.time].join('\n');
   }
+  if (family === 'granular') {
+    const G = granular;
+    return ['granular      ' + G.name,
+            'repose angle  ' + G.repose + ' deg (slope limit ' + reposeLimit().toFixed(3) + ' depth units per texel at the current Depth scale)',
+            'grain         ' + G.grain + ' px at 1024, contrast ' + G.contrast, 'ground tone   ' + G.tone.join(', '),
+            'crater        radius = the liquid footprint x ' + GRAN.rScale + ' (drop 0.34, strike 0.54 at area 0.5, default Energy), depth = the liquid\u2019s (strike x 0.5)',
+            'rim           drop W = 0.5 R, strike W = R; rim volume = crater volume', 'thrown grains ' + NTHROW + ' per strike, radius 0.015 .. 0.03, at 1.5 .. 3 R',
+            'repose        ' + REPOSE_ITER + ' iterations per step, K ' + REPOSE_K + ', top-grain ' + TOPGRAIN,
+            'defaults      time ' + G.time].join('\n');
+  }
   const L = liquid;
   return ['liquid        ' + L.name,
           'tension       ' + L.tension, 'viscosity     ' + L.visc,
@@ -2817,24 +3232,34 @@ function advText() {
 }
 function applySurface(key) {
   key = SURFACE_ALIAS[key] || key;
-  const isSolid = !!SOLIDS[key];
-  if (!isSolid && !LIQUIDS[key]) return false;
-  const fam = isSolid ? 'solid' : 'liquid', changed = fam !== family;
-  if (isSolid) { solid = SOLIDS[key]; solidKey = key; } else { liquidKey = key; liquid = LIQUIDS[key]; }
+  const isSolid = !!SOLIDS[key], isGran = !!GRANULARS[key];
+  if (!isSolid && !isGran && !LIQUIDS[key]) return false;
+  if (isGran && !granularOk) { $('fnote').textContent = 'Granular surfaces need a half-float render target (RGBA16F) for the deposit field, which this device cannot make: the surface was not changed.'; return false; }
+  const fam = isSolid ? 'solid' : isGran ? 'granular' : 'liquid', changed = fam !== family;
+  if (isSolid) { solid = SOLIDS[key]; solidKey = key; } else if (isGran) { granular = GRANULARS[key]; granularKey = key; } else { liquidKey = key; liquid = LIQUIDS[key]; }
   family = fam;
-  const d = isSolid ? solid : liquid;
-  const set = { reflect: d.fresnelBase, refract: d.refract, idle: d.idle, time: d.time };
+  const d = isSolid ? solid : isGran ? granular : liquid;
+  const set = { reflect: isGran ? d.reflect : d.fresnelBase, refract: d.refract, idle: d.idle, time: d.time };
+  if (isGran) Object.assign(set, { reposeAngle: d.repose, grainSize: d.grain, grainContrast: d.contrast });   // the granular sliders go back to the surface's own numbers
   Object.keys(set).forEach((k) => { const s = $('s' + ids[k]); s.value = set[k]; s.dispatchEvent(new Event('input')); });
   followSurfaceLight(d);
+  // ground colour of the procedural layers (and the letterbox): the granular surfaces have their own tone; liquids and solids use SURFACE_TONE, so a switch between them changes nothing
+  { const tone = isGran ? d.tone : SURFACE_TONE; if (tone !== groundTone) { groundTone = tone; if (proceduralMode) useProcedural(); else buildLayers(); } }
   if (changed) restart();
   document.querySelectorAll('[data-surface]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.surface === key ? 'true' : 'false'));
-  $('sDamp').disabled = isSolid; $('cDamp').classList.toggle('off', isSolid); $('dnote').hidden = !isSolid;
-  ['cEW', 'cEH'].forEach((id) => $(id).classList.toggle('off', isSolid)); $('enote').hidden = !isSolid;   // the layer-edge bevel is a liquid-shader term
+  const noWave = isSolid || isGran;                    // no wave simulation on either: the damping slider has nothing to damp
+  $('sDamp').disabled = noWave; $('cDamp').classList.toggle('off', noWave); $('dnote').hidden = !noWave; $('dnote').textContent = isGran ? 'no waves on granular surfaces' : 'no waves on solid surfaces';
+  ['cEW', 'cEH'].forEach((id) => $(id).classList.toggle('off', noWave)); $('enote').hidden = !noWave;   // the layer-edge bevel is a liquid-shader term (granular: no bevel, no lip: the rim is the lip)
+  $('enote').textContent = isGran ? 'edge width / height / sharpness do nothing on granular surfaces (no bevel, no lip)' : 'edge width / height shape the bevel of liquid surfaces only';
   $('cRCrack').classList.toggle('off', !isSolid); $('sRCrack').disabled = !isSolid; $('rcnote').hidden = isSolid;   // relief crack steers the crack planner: solids only
+  // inert on granular: the matte display has no reflection, refraction or idle ripple; the wave speed, spread and reveal lag belong to waves and cracks
+  ['sReflect', 'sRefract', 'sIdle', 'sSpeed', 'sSpread', 'sLag', 'sESharp'].forEach((id) => { const el = $(id); el.disabled = isGran; el.closest('.ctl').classList.toggle('off', isGran); });
+  $('granGroup').hidden = !isGran;
   $('oSpeed').textContent = fmt.speed(params.speed);
-  $('fnote').textContent = isSolid ? 'Solid surface: a drop opens a crack cluster instead of a wave. Cracks grow, never heal, and erode along themselves.' : '';
+  $('fnote').textContent = isSolid ? 'Solid surface: a drop opens a crack cluster instead of a wave. Cracks grow, never heal, and erode along themselves.' :
+    isGran ? 'Granular surface: the picture is the sand. A drop digs a crater and piles its grains on a rim; a strike digs a wide, shallow one, piles a rim and throws grains. Piles slide to the angle of repose.' : '';
   $('advNum').textContent = advText();
-  showTexFamily();
+  showTexFamily(); showImpact();
   syncValues();
   return true;
 }
@@ -3021,13 +3446,17 @@ const IMPACT_NOTE = {
   blow: 'Blow: pass 5. Selectable, but events of this type are stored and ignored for now.',
   flow: 'Flow: pass 5. Selectable, but events of this type are stored and ignored for now.'
 };
+const IMPACT_NOTE_GRAN = {     // granular surfaces (the other types are inert there too)
+  drop: 'Drop on sand: a crater (radius from Wavelength and Ring count, depth from Energy) whose grains, with their colours, pile on a rim half a radius wide. It reads Energy only.',
+  strike: 'Strike on sand: reads Energy and Area. A wider, shallower crater (half the depth), a rim one crater radius wide, and 12 thrown grains; rim and grains together hold the crater\u2019s volume.'
+};
 const IMP_UI = { area: ['sArea', 'oArea', (v) => v.toFixed(2)], duration: ['sDur', 'oDur', (v) => v.toFixed(2) + ' s'], dir: ['sDir', 'oDir', (v) => Math.round(v) + '°'] };
 function showImpact() {
   document.querySelectorAll('[data-impact]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.impact === impact.type ? 'true' : 'false'));
   Object.keys(IMP_UI).forEach((k) => { $(IMP_UI[k][0]).value = impact[k]; $(IMP_UI[k][1]).textContent = IMP_UI[k][2](impact[k]); });
   const pt = impact.type === 'drop', fixed = pt || impact.type === 'strike';
   [['cArea', 'sArea', pt], ['cDur', 'sDur', fixed], ['cDir', 'sDir', fixed]].forEach(([c, sl, off]) => { $(c).classList.toggle('off', off); $(sl).disabled = off; });
-  $('inote').textContent = IMPACT_NOTE[impact.type];
+  $('inote').textContent = (family === 'granular' && IMPACT_NOTE_GRAN[impact.type]) || IMPACT_NOTE[impact.type];
 }
 // Choosing a type loads its preset of area / duration / direction (keep: leave the numbers as they are, for a loaded settings file).
 function setImpactType(type, keep) {
@@ -3042,7 +3471,7 @@ Object.keys(IMP_UI).forEach((k) => $(IMP_UI[k][0]).addEventListener('input', (e)
   impact[k] = parseFloat(e.target.value); $(IMP_UI[k][1]).textContent = IMP_UI[k][2](impact[k]); syncValues();
 }));
 
-function showTexFamily() { $('texSolid').hidden = family !== 'solid'; $('texLiquid').hidden = family === 'solid'; }
+function showTexFamily() { $('texSolid').hidden = family !== 'solid'; $('texLiquid').hidden = family !== 'liquid'; $('texNone').hidden = family !== 'granular'; }   // granular: procedural grain only, no slots
 document.querySelectorAll('input[data-slot]').forEach((inp) => inp.addEventListener('change', async (e) => {
   const f = e.target.files && e.target.files[0]; e.target.value = '';
   if (f) await loadSlot(inp.dataset.slot, f);
@@ -3085,29 +3514,54 @@ function setSlider(k, v) {                                   // a slider by key,
 }
 function surfaceKeyFor(o) {
   const hit = (tab, name) => Object.keys(tab).filter((k) => tab[k].name === name)[0];
-  if (typeof o.surfaceKey === 'string' && (SOLIDS[o.surfaceKey] || LIQUIDS[o.surfaceKey] || SURFACE_ALIAS[o.surfaceKey])) return o.surfaceKey;
-  return typeof o.surface === 'string' ? (hit(LIQUIDS, o.surface) || hit(SOLIDS, o.surface)) : undefined;
+  if (typeof o.surfaceKey === 'string' && (SOLIDS[o.surfaceKey] || LIQUIDS[o.surfaceKey] || GRANULARS[o.surfaceKey] || SURFACE_ALIAS[o.surfaceKey])) return o.surfaceKey;
+  return typeof o.surface === 'string' ? (hit(LIQUIDS, o.surface) || hit(SOLIDS, o.surface) || hit(GRANULARS, o.surface)) : undefined;
 }
-// Restore a settings object. Unknown version: say so and apply what can be applied. Returns { notes, skipped }.
-function applySettings(o, fname) {
+// Restore a settings object. Unknown version: say so and apply what can be applied. Returns { notes, skipped, restarted }.
+//   LOAD (patch false)  a full restore: every key the file holds is applied, the keys added after the first files (SET_ADDED, granular) go to their defaults when the
+//                       file lacks them, and the piece always restarts.
+//   APPLY (patch true)  a PATCH: only the keys present in the file are applied, everything else is left exactly as it is, and the piece restarts ONLY if the
+//                       file holds a key that needs a rebuild. Same validation and messages as Load (unknown version; a wrong type is named and skipped).
+//   key                                           needs a restart?
+//   surface / surfaceKey                          yes (a surface change resets the four override sliders, follows the surface's light and, across families, rebuilds)
+//   aspect                                        yes (the fields are rebuilt at the new shape)
+//   fit                                           yes (the layer images are re-fitted)
+//   seed                                          yes (Random 45 s seed; the granular map seed)
+//   granular.map.* (seed; pass 3b: the cell map)  yes (frozen at piece start)
+//   every slider (dropSize .. reliefCrack), thickness, light, render, impact, autoEvents, granular.live.*   no (uniforms / the next event: they change live)
+function applySettings(o, fname, patch) {
   if (!o || typeof o !== 'object' || Array.isArray(o)) throw new Error('the file does not hold a settings object');
-  const notes = [], skipped = [];
-  if (o.version !== SETTINGS_VERSION) notes.push('Unknown settings version ' + (o.version === undefined ? '(none)' : JSON.stringify(o.version)) + ' (this build reads version ' + SETTINGS_VERSION + '): applying what can be applied.');
+  const notes = [], skipped = [], why = [];
+  const need = (k) => { if (why.indexOf(k) < 0) why.push(k); };
+  // a hand-written patch may leave the version out; a wrong one is still named
+  if (o.version !== SETTINGS_VERSION && !(patch && o.version === undefined)) notes.push('Unknown settings version ' + (o.version === undefined ? '(none)' : JSON.stringify(o.version)) + ' (this build reads version ' + SETTINGS_VERSION + '): applying what can be applied.');
   const A = o.aspect, F = o.fit;
-  if (A && typeof A === 'object' && A.w > 0 && A.h > 0) { if (!setAspect(A.w, A.h, typeof A.preset === 'string' ? A.preset : 'custom', { noRender: true })) skipped.push('aspect'); }
+  if (A && typeof A === 'object' && A.w > 0 && A.h > 0) { if (!setAspect(A.w, A.h, typeof A.preset === 'string' ? A.preset : 'custom', { noRender: !patch || o.render !== undefined })) skipped.push('aspect'); else need('aspect'); }
   else if (o.aspect !== undefined) skipped.push('aspect');
-  if (F && typeof F === 'object' && (F.mode === 'cover' || F.mode === 'contain' || F.mode === 'stretch')) setFit(F.mode, isNum(F.x) ? F.x : 0, isNum(F.y) ? F.y : 0, true);
+  if (F && typeof F === 'object' && (F.mode === 'cover' || F.mode === 'contain' || F.mode === 'stretch')) { setFit(F.mode, isNum(F.x) ? F.x : 0, isNum(F.y) ? F.y : 0, true); need('fit'); }
   else if (o.fit !== undefined) skipped.push('fit');
   const key = surfaceKeyFor(o);
-  if (key) applySurface(key); else { skipped.push('surface'); notes.push('Surface ' + JSON.stringify(o.surfaceKey || o.surface || null) + ' is not known: the current surface is kept.'); }
+  if (key && applySurface(key)) need('surface');
+  else if (!patch || o.surface !== undefined || o.surfaceKey !== undefined) { skipped.push('surface'); notes.push('Surface ' + JSON.stringify(o.surfaceKey || o.surface || null) + ' is not known' + (key ? ' on this device' : '') + ': the current surface is kept.'); }
   // sliders (after the surface: choosing a surface resets reflect / refract / idle / time)
   Object.keys(SET_NAMES).forEach((k) => {
     const name = SET_NAMES[k]; let v = o[name];
-    if (v === undefined && SET_ADDED.indexOf(k) >= 0) v = ARTIST[k];      // an older file: the relief sliders were not there, so they are at their defaults
+    if (v === undefined && !patch && SET_ADDED.indexOf(k) >= 0) v = ARTIST[k];      // an older file: the relief sliders were not there, so they are at their defaults
     if (v === undefined || (name === 'damping' && v === null)) return;
     if (k === 'spread' && v === 'off') v = SPREAD_OFF;
     if (!setSlider(k, v)) skipped.push(name);
   });
+  // granular (A9): map = frozen at piece start (restarts), live = uniforms. A file without the block (older) loads the three live sliders at the surface's defaults.
+  const Gr = o.granular, isObj = (v) => v && typeof v === 'object' && !Array.isArray(v);
+  let mapSeed;
+  if (isObj(Gr)) {
+    if (Gr.map !== undefined) { if (isObj(Gr.map)) { if (Gr.map.seed !== undefined) { if (isNum(Gr.map.seed)) mapSeed = Gr.map.seed; else skipped.push('granular.map.seed'); } } else skipped.push('granular.map'); }
+    if (Gr.live !== undefined) {
+      if (isObj(Gr.live)) ['reposeAngle', 'grainSize', 'grainContrast'].forEach((k) => { if (Gr.live[k] !== undefined && !setSlider(k, Gr.live[k])) skipped.push('granular.live.' + k); });
+      else skipped.push('granular.live');
+    }
+  } else if (Gr !== undefined) skipped.push('granular');
+  else if (!patch) { const gd = GRANULARS[granularKey] || GRANULARS.sand; setSlider('reposeAngle', gd.repose); setSlider('grainSize', gd.grain); setSlider('grainContrast', gd.contrast); }
   if (o.impact && isNum(o.impact.energy)) setSlider('size', o.impact.energy);
   if (Array.isArray(o.thickness)) [0, 1, 2, 3].forEach((i) => { if (o.thickness[i] !== undefined && !setSlider('th' + i, o.thickness[i])) skipped.push('thickness[' + i + ']'); });
   else if (o.thickness !== undefined) skipped.push('thickness');
@@ -3132,33 +3586,38 @@ function applySettings(o, fname) {
     if (typeof R.lock === 'boolean') renderSet.lock = R.lock;
     showRender();
   } else if (o.render !== undefined) skipped.push('render');
-  if (isNum(o.seed)) $('nSeed').value = String(clamp(Math.round(o.seed), 0, 999999)); else if (o.seed !== undefined) skipped.push('seed');
+  if (isNum(o.seed)) { $('nSeed').value = String(clamp(Math.round(o.seed), 0, 999999)); need('seed'); }
+  else if (o.seed !== undefined) skipped.push('seed');
+  else if (mapSeed !== undefined) { $('nSeed').value = String(clamp(Math.round(mapSeed), 0, 999999)); need('granular.map'); }   // map.seed is the piece seed: a file that holds only the map block sets it
   const I = o.impact;
   if (I && typeof I === 'object') {
     if (IMPACT_TYPES.indexOf(I.type) >= 0) setImpactType(I.type, false); else skipped.push('impact.type');
     [['area', 0, 1], ['duration', 0, 3], ['dir', 0, 360]].forEach(([k, lo, hi]) => { if (I[k] === undefined) return; if (isNum(I[k])) impact[k] = clamp(I[k], lo, hi); else skipped.push('impact.' + k); });
     showImpact();
   } else if (o.impact !== undefined) skipped.push('impact');
-  restart(); playing = true; $('bPlay').textContent = 'Pause';
+  const restarted = !patch || why.length > 0;
+  if (restarted) { restart(); playing = true; $('bPlay').textContent = 'Pause'; }
   if (typeof o.autoEvents === 'boolean') setAuto(o.autoEvents);
   syncValues();
-  const msg = notes.concat(['Loaded ' + (fname || 'settings') + (skipped.length ? '; not applied: ' + skipped.join(', ') : '') + '. The layer images and the textures are not part of the file.']);
+  const msg = notes.concat([patch ? 'Applied ' + (fname || 'settings') + ': ' + (why.length ? 'the piece restarted (' + why.join(', ') + ')' : 'live, no restart') + (skipped.length ? '; not applied: ' + skipped.join(', ') : '') + '.'
+    : 'Loaded ' + (fname || 'settings') + (skipped.length ? '; not applied: ' + skipped.join(', ') : '') + '. The layer images and the textures are not part of the file.']);
   showSetMsg(msg.join(' '), notes.length > 0 || skipped.length > 0);
-  return { notes, skipped };
+  return { notes, skipped, restarted };
 }
 function readText(file) {
   if (file.text) return file.text();
   return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = () => rej(r.error); r.readAsText(file); });
 }
-async function loadSettingsFile(file) {
+async function loadSettingsFile(file, patch) {
   let o;
   try { o = JSON.parse(await readText(file)); }
   catch (err) { showSetMsg(file.name + ' is not valid JSON (' + (err && err.message || err) + '). Nothing was changed.', true); return false; }
-  try { applySettings(o, file.name); return true; }
+  try { applySettings(o, file.name, patch); return true; }
   catch (err) { showSetMsg(file.name + ': ' + (err && err.message || err) + '. Nothing was changed.', true); return false; }
 }
 $('bSave').addEventListener('click', saveSettings);
 $('fLoad').addEventListener('change', async (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) await loadSettingsFile(f); });
+$('fApply').addEventListener('change', async (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) await loadSettingsFile(f, true); });
 
 // Console hook for a real events.json (array of {t, pitch, vel}; each may also carry type / energy / area / duration / dir).
 window.XANADU = {
@@ -3178,6 +3637,7 @@ window.XANADU = {
   get layerHeights() { return lhFlags.slice(); },                                                   // which layers carry a height map in use
   get cracks() { return cdrops; },                                                                  // test hook: the planned crack clusters (polylines)
   settingsFile, applySettings, saveSettings,
+  patchSettings(o, fname) { return applySettings(o, fname, true); },                              // Apply settings (a patch): only the keys present, a restart only if one needs it
   step(n) { for (let i = 0; i < n; i++) substep(); },                                              // test hooks: n substeps (1/60 s each) ...
   fire(x, y) { manualQ.push({ ev: { t: stepCount * DT, x, y, energy: params.size }, scaled: false }); },   // ... and an impact at (x, y), as a tap
   readMask() {                       // test hook: the shown erosion depth, one float per texel (needs a 32-bit mask)
@@ -3192,6 +3652,20 @@ window.XANADU = {
     if (f32) gl.readPixels(0, 0, simW, simH, gl.RGBA, gl.FLOAT, a);
     return { w: simW, h: simH, height: Float32Array.from({ length: simW * simH }, (_, i) => a[i * 4]) };
   },
+  readDeposit() {                    // test hook: the deposit field, 4 floats per texel (height, r, g, b), fieldW x fieldH, row 0 = bottom; zeros where it cannot be read
+    const a = new Float32Array(fieldW * fieldH * 4);
+    if (!dep) return a;
+    drainGL();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, dep.cur.fbo);
+    gl.readPixels(0, 0, fieldW, fieldH, gl.RGBA, gl.FLOAT, a);
+    if (gl.getError() !== gl.NO_ERROR) a.fill(0);
+    return a;
+  },
+  get granularOk() { return granularOk; },
+  GRAN, GRANULARS,
+  get stepCount() { return stepCount; },                                                              // test hook: substeps run in this piece
+  get granularEvents() { return drops.slice(); },                                                    // test hook: the event records (R, W, ero, f0, rimP, Vc, thrown ...)
+  get thrown() { return drops.filter((d) => d.thrown).map((d) => d.thrown); },                     // test hook: the thrown grains of the strikes in the list
   get sources() { return sources; },
   setEvents(list) { EVENTS = list.map(dropFromEvent).sort((a, b) => a.t - b.t); restart(); },
   setAuto,

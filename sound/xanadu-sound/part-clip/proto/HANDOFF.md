@@ -8,7 +8,7 @@ For the next chat. Written 1 Nov 2026 by the advisor at the end of a two-day ses
 2. Say: "Read sound/xanadu-sound/part-clip/proto/HANDOFF.md and continue."
 3. Working language Turkish; system files English. Address: Üstadım.
 
-## What exists (all pushed to `main`; pass 2 pushed 1 Nov 2026, evening — see the pass log)
+## What exists (all pushed to `main`; pass 3a pushed 1 Nov 2026, night — see the pass log)
 
 | Path | What | State |
 |---|---|---|
@@ -43,11 +43,12 @@ For the next chat. Written 1 Nov 2026 by the advisor at the end of a two-day ses
 - Pass 1b (done, reviewed, fuzzed): any aspect ratio (rectangular isotropic fields), fit cover/contain/stretch + offset, RENDER settings block, PNG/JPEG/TIFF (inline decoder: LE/BE, 8/16-bit, none/LZW+predictor; 150 Mpx cap), 16-bit → RGBA16F.
 - Pass 1c (done, reviewed — no bugs; one flag, fixed in pass 2: liquid strike read narrower than a drop): texture slots (solid: albedo/height→bump/roughness; liquid: brushing/HDRI), save/load settings JSON, impact model first half (drop + strike; sweep/blow/flow inert), Random 45 s uses the impact type.
 - Pass 2 (done, reviewed — one house-style fix; three flags below): liquid strike rebuilt (zero-volume swell, lam/sigma 3.40, swell amp 0.30 + splash 0.4 of a drop's: wider AND lower — lip ring 1.75× a drop's at 2.5 s, peak 0.27× at 0.6 s); A6 per-layer height map (second TEXTURE_2D_ARRAY, R8/R16F, Height/Clear per layer, `layerBump` 0–2; solid bump crossfades with the stack, liquid = diffuse shading only); A4 relief coupling (`reliefWear` 0–1 in both mask shaders, `reliefCrack` 0–1 steers the crack planner, `RELIEF_K` 0.10). Details in PLAN-v2 "Done — pass 2".
+- Pass 3a (done, reviewed — no edits; shipped as CORE with flags, look not yet right): third family `granular` (Sand, Dust): deposit field (RGBA16F pair, x height, yzw top-grain colour), crater + volume-conserving rim + thrown discs for drop/strike, repose relaxation (2 gather iterations/substep, quantised flows), top-grain colour rule (mud index 0), granular display (grain noise, matte, occlusion + cast shadow), GRANULAR sliders, `granular:{map,live}` settings block, generic Apply (patch) button. Liquid/solid pixel-identical. Six defects and the look flags are listed below and in PLAN-v2 "Done — pass 3a"; fix them in **3a-look** before 3b builds on the deposit field.
 
 ## Next passes (PLAN-v2 §C + IMPACTS.md)
 
 2. ~~A4 + A6~~ done.
-3. Granular medium (sand/dust): height transport, angle of repose; drop + strike.
+3. ~~Granular core~~ done (3a). **3a-look** next: rim/grain colour carried by volume (colour of the layer being cut at each substep, top-grain rule per increment); repose exact above deposit 1 (store height scaled, or RGBA32F where it renders); crater floor through the grain rule, not the `layerMix` crossfade; thrown grains small and irregular (4–12 px, 30–40, particles later in 3c); relief visible at defaults (depth or shade); edge / bottom-out / 5th-strike volume accounted; `depDirty` reset; readout `map.seed` = frozen seed; Apply names unknown keys. Then **3b**: blow (wind) for granular + clods (PLAN-v2 A9) + `events.json` set-events.
 4. Sweep for all three media (absorb + pile).
 5. Blow + flow for all three media.
 6. B5 dispersive waves — **Opus**, isolated, revertible.
@@ -70,11 +71,18 @@ For the next chat. Written 1 Nov 2026 by the advisor at the end of a two-day ses
 - (pass 2) Both mask shaders compute the relief for every texel while reliefWear > 0; gate on `adv > 0` / `inc > 0` (same output, less work).
 - (pass 2, pre-existing since 1c) A strike leaves a flat standing offset in the wave field (~0.015 per strike at swell amp 0.30; the old strike left 0.017). Invisible (display reads only the slope) and harmless in RGBA32F; on the RGBA16F fallback precision degrades after ~100 strikes. Fix later: subtract the field mean, or make the injection velocity-neutral.
 - (pass 2) Solid display: +8 texture reads per fragment while a layer height map is in use (known +11 → +19); liquid display +8 under the same condition; masks +2/+3 while reliefWear > 0.
+- (pass 3a, defect) Repose creates volume once a texel's deposit exceeds 1 depth unit (half-float spacing 2^-10 above 1, 2^-9 above 2; flows are 2^-11): +1.6 % at 2 s, +4.5 % at 6 s and growing on three stacked Energy-2 drops; exact below 1. Fix in 3a-look.
+- (pass 3a, defect) Rim and thrown-grain colour = the crater-bottom colour at the end of the build (repainted every substep), not the removed grains' colour by volume: red over blue, strike 0.25 deep → removed 88 % red, rim 86 % blue, all discs blue. Against the ruling. Fix in 3a-look.
+- (pass 3a) Off-canvas crater/rim volume is lost silently (centre at x 0.05: drop −30 %, strike −25 %); the stack bottoming out at white makes the rim exceed the crater (+13 % with 0.2 thicknesses); a 5th simultaneous strike drops its discs silently (−1 %); `wearMul` scales the crater but not the rim (code read).
+- (pass 3a, look) Drops read as thin rings, not craters (rim 1–2 px at default Depth scale 0.3); thrown discs 15–30 px read as ink drops; crater floors between two layers show the `layerMix` crossfade (~4 % of pixels nearest the 50/50 mix on red/blue) — grains should not blend; `GRAN_SHADE_K` 2 shows 45° at a 34° limit; Energy scales the drop radius by √(E/0.5) while the note says depth only.
+- (pass 3a) `depDirty` never resets: 2 repose passes (13-texel gather, 512²) every substep after the first event — no device timing yet. Readout `map.seed` shows the seed field, not the frozen `granMapSeed`. Apply accepts a patch without `version` and never names unknown top-level keys; `seed` beats `granular.map.seed` silently; a patch naming the current surface restarts and resets the granular sliders. `derived` is already RGBA16F, so the granular refusal only triggers if the deposit pair alone fails.
+- (pass 3a) Load has never reset keys absent from the file (HEAD behaviour, found by the pass 3a review) — the brief's "missing keys → defaults" was never true; decide whether Load should.
 
 ## Open questions for Bekir
 
 - Ear test (`fr-001-tintinnabuli`): which `|`, which ambiguity, is K too shrill? — unanswered since 31 Oct.
 - Thin lip vs old bevel on the liquid edge — judge on iPad.
 - Default layer thicknesses — advisor suggested [0.4, 1.5, 2.5, 3].
+- Pass 3a on iPad: do drops read as craters or rings? Do the thrown discs read as grains or ink? Is relief visible at defaults? Does Dust differ from Sand? Frame rate with the repose passes running (HUD).
 - Pass 2 taste calls: is the strike's basin (swell amp 0.30) right on screen? Is `reliefCrack` strong enough with real maps? — judge with his own height maps.
 - Send the UE brief (§11.6 of the project file), now for two works (Alina, Cantus); ECM master quote in parallel.
