@@ -116,4 +116,41 @@ Three streams. (1) **MJDL / Perception Cloud**: the interactive reference tool *
 | MJDL package | `MJDL-package-2026-10-30.zip` (with Bekir) — `tool/xan-partition-view.html` v28, `tool/phobia-engine.js` 0.2, `tool/phobia-lab.html` v8, `tool/phobia-phase-lab.html` (parked), `phase-model-plan.html`, `docs/MJDL-cloud-configuration.md` 0.14+, `MJDL-PM-brief.md` (change log to 31 Oct 09:00), `MJDL-phobia-table.md` 0.7, procedure/definitions/transition notes, README | **not in git** |
 | Nodular composition plan | in the package docs (written 30 Oct, no code) | plan only |
 
+### 5.1 File-by-file, latest version known to the advisor
+
+Versions marked [☀️] were read from the repo today; [🌤️] are taken from the session transcripts (the package itself is not reachable from here — the PM verifies against the zip's `README.md` and `docs/MJDL-PM-brief.md`, whose change log is authoritative).
+
+**Repo `bektaron/MJDL`, HEAD `f51bb08` (2 Nov 2026)** [☀️]
+
+| File | Latest | Notes |
+|---|---|---|
+| `sound/xanadu-sound/part-clip/proto/index.html` | pass 3a-look, commit `277edcb` | settings JSON `version 1`; one file, no libraries |
+| `sound/xanadu-sound/part-clip/proto/PLAN-v2.md` | v2.1 + "Done" log through pass 3a-look | A9 holds the 3b design |
+| `sound/xanadu-sound/part-clip/proto/HANDOFF.md` | current to 2 Nov 02:00 | method, pass log, flags, open questions |
+| `sound/xanadu-sound/part-clip/proto/IMPACTS.md` | v1 (1 Nov) + Für Alina = liquid, pass order 3a/3b | |
+| `sound/xanadu-sound/docs/XANADU-SOUND-project.md` | §10 extended to the sand ruling (1 Nov) | §11.6 = UE brief |
+| `sound/xanadu-sound/docs/XANADU-SOUND-research.md` | 31 Oct | |
+| `sound/xanadu-sound/fr-001/index.html`, `fr-002/index.html`, `fr-001-tintinnabuli/index.html`, `sound/xanadu-sound/index.html` | 30–31 Oct | live on Pages |
+| `docs/PM-HANDOFF-2026-11-02.md` | this file | |
+
+**Package `MJDL-package-2026-10-30.zip`, closed 31 Oct 2026 09:00 CET** [🌤️]
+
+| File | Latest | Notes |
+|---|---|---|
+| `tool/xan-partition-view.html` | **v28** | v29 (rewired onto the engine) started, not packaged |
+| `tool/phobia-engine.js` | **0.2** | DOM-free, public API in the header; reusable |
+| `tool/phobia-lab.html` | **v8** | engine inlined; the accepted point |
+| `tool/phobia-phase-lab.html` | trial 1 | parked by ruling, not applied |
+| `phase-model-plan.html` | plan page with sketches | approved before the trial |
+| `tool/xan-relations-mockup.html` | 30 Oct | the alternatives that led to type clouds |
+| `docs/MJDL-PM-brief.md` | last updated 31 Oct 09:00 | change log from 30 Oct 10:30 — read first |
+| `docs/MJDL-cloud-configuration.md` | 0.14 at the end of 29 Oct; bumped further on 30 Oct for v23–v28 (exact number: see the brief) | |
+| `docs/MJDL-phobia-table.md` | **0.7** | rank table, contradictions, §13–14 phase model + XPBD |
+| `docs/MJDL-canon-transition.md` | 0.3 | |
+| procedure note | 1.12 (as of 30 Oct 10:30) | exact file name: see README |
+| definitions note | 0.12 (as of 30 Oct 10:30) | exact file name: see README |
+| `docs/MJDL-sonification-plan.md` | 0.1 | "nodular composition" plan, no code |
+| `docs/XANADU-SOUND-project.md` | 0.1 (early copy) | **superseded** by the repo's version |
+| `README.md` | lists every file with its version | |
+
 **To resume the Pärt work in a new session:** connect `bektaron/MJDL`, read `sound/xanadu-sound/part-clip/proto/HANDOFF.md`, continue. To resume MJDL: unzip the package, read `docs/MJDL-PM-brief.md` first.
