@@ -27,7 +27,7 @@ Every event carries four medium-independent numbers; the type is a preset of the
 |---|---|---|---|---|---|---|
 | liquid | ✓ | ✓ | ✓ (skims the film, exposes below briefly, pile = ridge) | ≈ flow | ✓ | ✓ wake line, closes |
 | solid | ✓ | ✓ | ✓ (scrapes, pile = swarf at the edge) | ✓ (flakes/plates) | ✓ slow | ✓ score line (cracks follow it) |
-| granular | ✓ crater + rim | ✓ wide crater + rim + thrown grains | ✓ (the natural one: grains drawn in, pile at the edge) | ✓ (the natural one: grains carried downwind, lee piles; **pass 3b-i**) | ✓ grains slide with the water | ✓ furrow + two ridges |
+| granular | ✓ crater + rim | ✓ wide crater + rim + thrown grains | ✓ (the natural one: grains drawn in, pile at the edge) | ✓ (the natural one: grains carried downwind, lee piles; **done in pass 3b-i**: band gust, stochastic hops, bed lift) | ✓ grains slide with the water | ✓ furrow + two ridges |
 
 ## Pieces mapped so far
 

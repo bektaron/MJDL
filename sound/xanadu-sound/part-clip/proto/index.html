@@ -139,7 +139,7 @@ pre#advNum{margin:0 0 8px;padding:10px;font:12px/1.5 ui-monospace,SFMono-Regular
         <button class="sm" type="button" data-impact="drop" aria-pressed="true">Drop</button>
         <button class="sm" type="button" data-impact="strike" aria-pressed="false">Strike</button>
         <button class="sm" type="button" data-impact="sweep" aria-pressed="false">Sweep<small>pass 4</small></button>
-        <button class="sm" type="button" data-impact="blow" aria-pressed="false">Blow<small>pass 5</small></button>
+        <button class="sm" type="button" data-impact="blow" aria-pressed="false">Blow<small>sand · pass 5</small></button>
         <button class="sm" type="button" data-impact="flow" aria-pressed="false">Flow<small>pass 5</small></button>
       </div>
       <div class="ctl"><label for="sSize">Energy</label><input id="sSize" type="range" min="0.05" max="2" step="0.05" value="0.5"><output id="oSize"></output></div>
@@ -196,7 +196,10 @@ pre#advNum{margin:0 0 8px;padding:10px;font:12px/1.5 ui-monospace,SFMono-Regular
         <div class="ctl"><label for="sRepose">Repose angle</label><input id="sRepose" type="range" min="15" max="45" step="1" value="34"><output id="oRepose"></output></div>
         <div class="ctl"><label for="sGrSize">Grain size</label><input id="sGrSize" type="range" min="0.5" max="4" step="0.1" value="2"><output id="oGrSize"></output></div>
         <div class="ctl"><label for="sGrCon">Grain contrast</label><input id="sGrCon" type="range" min="0" max="0.5" step="0.01" value="0.18"><output id="oGrCon"></output></div>
-        <p class="note">Repose angle: the steepest slope a pile keeps; steeper grains slide (the angle of the rendered heightfield, Depth scale included). Grain size: noise period in pixels at 1024. The picture is the sand: an impact moves grains, with their colours, from the crater to its rim. Wavelength and Ring count set the crater radius (as a drop's footprint on a liquid); Energy sets the crater depth and radius (√(E/0.5)). Volume thrown beyond the canvas is lost.</p>
+        <div class="ctl"><label for="sWLift">Wind lift (hop rate)</label><input id="sWLift" type="range" min="0" max="2" step="0.05" value="1"><output id="oWLift"></output></div>
+        <div class="ctl"><label for="sWCarry">Wind carry</label><input id="sWCarry" type="range" min="0.01" max="0.1" step="0.005" value="0.04"><output id="oWCarry"></output></div>
+        <div class="ctl"><label for="sWBed">Wind on bed</label><input id="sWBed" type="range" min="0" max="1" step="0.05" value="0.05"><output id="oWBed"></output></div>
+        <p class="note">Repose angle: the steepest slope a pile keeps; steeper grains slide (the angle of the rendered heightfield, Depth scale included). Grain size: noise period in pixels at 1024. The picture is the sand: an impact moves grains, with their colours, from the crater to its rim. Wavelength and Ring count set the crater radius (as a drop's footprint on a liquid); Energy sets the crater depth and radius (√(E/0.5)). Volume thrown or blown beyond the canvas is lost. Wind lift (hop rate): scales the chance that a grain hops in one 1/60 s (7.5 % at 1, at wind 1 on open sand; lee slopes shelter, windward slopes expose); Wind carry: the mean length of a hop at wind 1, as a fraction of the long side (a hop is one of four lengths, 0.15 to 2.3 times the mean); Wind on bed: a hopping grain with less than 0.02 of sand under it also pulls Wind on bed times the shortfall from the bed.</p>
       </div>
       <div class="grp">Textures (kept when the surface changes; max 2048 per side)</div>
       <div id="texSolid">
@@ -346,7 +349,8 @@ const RULE = { rMin: 0.04, rMax: 0.42, angle0: 0.6, omega: (2 * Math.PI) / 45 };
                            (the Energy slider is a multiplier relative to its default, as before).
    ---------------------------------------------------------------------- */
 const IMPACT_TYPES  = ['drop', 'strike', 'sweep', 'blow', 'flow'];
-const IMPACT_ACTIVE = { drop: true, strike: true };            // the others: stored and ignored (passes 4 / 5)
+const IMPACT_ACTIVE = { drop: true, strike: true, blow: 'granular' };   // true = acts on every family; a family name = acts only there (blow: sand and dust, pass 3b-i); the rest: stored and ignored (passes 4 / 5)
+const impactActive = (type) => IMPACT_ACTIVE[type] === true || IMPACT_ACTIVE[type] === family;
 const IMPACT_PRESET = { drop: { area: 0.1, duration: 0, dir: 0 }, strike: { area: 0.5, duration: 0.1, dir: 0 },
                         sweep: { area: 0.2, duration: 1.5, dir: 0 }, blow: { area: 0.6, duration: 2, dir: 0 }, flow: { area: 0.8, duration: 3, dir: 0 } };
 const impact = { type: 'drop', area: 0.1, duration: 0, dir: 0 };   // the IMPACT block (dir in degrees; energy is the Energy slider, params.size)
@@ -1309,14 +1313,16 @@ void main(){
    DEPTH -> LENGTH (stated once, used by the repose slope and the display normals): one depth unit is  depthLen = Depth scale x DEPTH_UNIT  long-side
    units of height (the solid's heightfield, depthAt(): uv-height = shown depth x uDepthH; uv and long-side units are the same length for a height). One
    mask texel is 1 / fieldRes long-side units wide. So a slope of dH depth units per texel is the real slope dH x depthLen x fieldRes.
-   Per substep: mask pass (the crater) -> [deposit pass (only while an event is building: it reads the mask before and after)] -> REPOSE_ITER repose iterations (while an event builds and for REPOSE_TAIL s after).
+   Per substep: mask pass (the crater) -> [deposit pass (only while an event is building: it reads the mask before and after)] -> [wind pass (only while a blow is active)] -> REPOSE_ITER repose iterations (while an event builds or wind blows, and afterwards until nothing has moved for REPOSE_QUIET s: see REPOSE GATE).
    ====================================================================== */
 const MAXS         = 6;      // strikes whose thrown grains can be building at once (each carries NTHROW discs in the deposit shader's uniforms: MAXS x NTHROW vec4 = 144 of the program's ~195); a seventh drops its discs (counted, shown in the HUD), its rim then holds their share
 const NTHROW       = 24;     // thrown grains per strike
 const THROW_R0     = 0.004;  // thrown grain radius, long-side units: 4 .. 12 px at 1024 (the grain size of a handful of sand, not an ink drop)
 const THROW_R1     = 0.012;
 const THROW_RIP    = 0.25;   // each disc's outline is r (1 + THROW_RIP sin(3 theta + phase)): a 3-lobed pebble, not a circle; its volume is the round one x (1 + THROW_RIP^2 / 2)
-const REPOSE_TAIL  = 8;      // seconds the repose passes keep running after the last granular event has finished building (they run while an event builds and then for this long; a slider move that changes the limit wakes them for as long again)
+const REPOSE_QUIET = 0.5;    // seconds nothing must have moved before the repose passes stop (two consecutive checks read 0). They run while a granular event builds or wind blows, and afterwards until then (pass 3b-i; was a fixed tail of 8 s that froze slides still moving: drop 15 deg at Depth 0.8 stopped at slope ratio 1.20). A slider that changes the slope limit wakes them again
+const REPOSE_CHECK = 0.25;   // seconds between two checks of the "moved" texture (see REPOSE GATE): CHECK_STEPS substeps
+const CHECK_STEPS  = Math.round(REPOSE_CHECK / DT);
 const REPOSE_ITER  = 2;      // repose iterations per substep
 const REPOSE_K     = 0.5;    // fraction of the excess slope e moved per iteration = REPOSE_K x e / 2 to each lower neighbour; <= 0.5 is the usual stable choice for a 4-neighbour relaxation (a texel with four lower neighbours sends 4 x K x e / 2 <= e)
 const REPOSE_Q     = 1 / 2048;  // flows are whole multiples of this (depth units). The deposit is RGBA32F where the device renders to it (as the wave state): a float holds a multiple of 2^-11 exactly up to a height of 2^13, so sender and receiver add and subtract the same number and volume is conserved (to the rounding of a float, ~1e-7 of a transfer). The RGBA16F FALLBACK (no 32-bit float target) keeps the old limit: exact below 1 depth unit, above it a result rounds by 2^-10 / 2^-9 and the sender's loss and the receiver's gain disagree (volume creep, a known precision flag). A flow under 2 Q / K is not moved: the slope residue is at most 4 Q = 0.002 depth units per texel
@@ -1327,20 +1333,36 @@ const GRAN_SHADE_K = 1.0;    // shading only: vertical exaggeration of the heigh
 const GRAN_SLOPE_MAX = 1.5;  // shading only: the exaggerated slope is soft-clipped to this (56 degrees), so a pile at its real angle of repose does not go black
 const GRAN_AO_N    = 0.004;  // occlusion: height difference (long-side units) that counts as fully occluded (the solid uses 0.012 for its deeper fissures)
 const GRAN_SH_N    = 0.002;  // cast shadow: height above the light ray (long-side units) that counts as fully shadowed (the solid: 0.004)
-const GRAN = { rScale: 0.25, repose: true, shadeK: GRAN_SHADE_K, depthK: GRAN_DEPTH_K, depHalf: false };   // test hooks. depHalf: true makes the next buildFields use the RGBA16F deposit (the fallback). rScale: crater radius of a granular impact as a fraction of the liquid footprint it is taken from (makeGranular), so both can be measured. repose: false switches the relaxation off
+/* WIND (pass 3b-i): a blow makes loose grains HOP downwind. One pass per substep while a blow is active (FS_WIND); see the WIND block at the pass.
+   Units: depth = depth units (as the deposit and the mask), length = long-side units of the canvas, texel = one field texel (1 / fieldRes long-side units). */
+const MAXW         = 4;      // blows active at once (the wind program's uniforms; a fifth replaces the one with the least time left, counted in the HUD)
+const WIND_HOP     = 0.075;  // probability that a texel hops in one substep at local wind 1, exposure 1, Wind lift (hop rate) 1: a loose grain hops ~4.5 times a second (the first pass-3b-i build lifted the whole film of every texel every substep, 60 times a second: a conveyor). The brief's 0.05 moved the rim's centroid 0.043 downwind in the T2 test (target 0.05-0.15) with 12 % of the loose volume leaving the canvas; 0.075 gives 0.061 and 25 % (target <= 30 %), 0.1 gives 0.075 and 40 %
+const WIND_LIFT    = 1.0;    // the Wind lift (hop rate) slider's default: it scales WIND_HOP (0 .. 2)
+const WIND_GRAB    = 41 * REPOSE_Q;   // depth released by one hop: min(deposit, WIND_GRAB), 0.0200 (two films of 0.01); a multiple of Q so that nothing is rounded
+const WIND_CARRY   = 0.04;   // long-side units of the MEAN hop at wind 1 (the Wind carry slider's default): 20 texels at 512. A hop lands at one of WIND_K distance classes, 0.15 / 0.51 / 1.07 / 2.27 x the mean
+const WIND_K       = 4;      // distance classes: the quantiles (k + 0.5) / K of an exponential hop length, normalised to mean 1 (WIND_G)
+const WIND_G       = (() => { const g = []; for (let k = 0; k < WIND_K; k++) g.push(-Math.log(1 - (k + 0.5) / WIND_K)); const m = g.reduce((a, b) => a + b, 0) / WIND_K; return g.map((v) => v / m); })();
+const WIND_SLOPE   = 2.0;    // exposure gain per repose limit of upwind slope: a face rising into the wind at the angle of repose is eroded (1 + 2) = 3 times as fast
+const WIND_SHELTER = 2.0;    // exposure loss per repose limit of slope falling away downwind: a lee face at HALF the repose angle is fully sheltered (1 - 2 x 0.5 = 0), so it keeps what lands on it
+const WIND_BED     = 0.05;   // a hopping texel with less than WIND_GRAB of deposit also takes WIND_BED x (WIND_GRAB - deposit) from the bed (the Wind on bed slider's default; was 0.25 and the bed came up everywhere)
+const WIND_DMAX    = 48;     // largest hop, texels (the smallest is 1)
+const WIND_FALL    = 0.25;   // the strength falls to zero over the last quarter of the gust (Attack + Duration)
+const WIND_DEF     = { windLift: WIND_LIFT, windCarry: WIND_CARRY, windBed: WIND_BED };
+const GRAN = { rScale: 0.25, repose: true, shadeK: GRAN_SHADE_K, depthK: GRAN_DEPTH_K, depHalf: false, windWrap: false, rimQuantile: true, readNoWait: false, reposeCap: 0 };   // test hooks. windWrap: the carry wraps around the field edges (conservation tests; default false = grains carried off the canvas are lost). rimQuantile: false = the 3a-look rim colour by bowl depth (identity tests). readNoWait: a late repose check is left for a later substep instead of read at once (default false: see REPOSE GATE). reposeCap: s after which an unquiet repose stops anyway (0 = never). depHalf: true makes the next buildFields use the RGBA16F deposit (the fallback). rScale: crater radius of a granular impact as a fraction of the liquid footprint it is taken from (makeGranular), so both can be measured. repose: false switches the relaxation off
 // A crater of radius R, depth `a` and feather start f0 (profile = 1 - smoothstep(f0 R, R, r)) holds  Vc = 2 pi a C(f0) R^2  with  C(f0) = f0 / 2 + 0.15 (1 - f0)^2.
 const craterC = (f0) => f0 / 2 + 0.15 * (1 - f0) * (1 - f0);
 
-// GRAIN COLOUR (display and deposit pass share it). A grain is never a blend: the colour of the bed at eroded depth z is ONE layer's colour, the nearest, and
-// across a layer boundary a per-grain hash decides which side a grain falls on (a dithered edge, not a crossfade: no purple between red and blue). The layer
-// boundary is at stack position fi + 0.5, the dither is GRAIN_DITHER wide (in stack-position units), centred on it: below it every grain is the upper layer,
-// above it the lower one. `iuv` is the image-space uv (v down), `h` the grain's hash in 0..1: the lower layer is picked when h < the dither ramp.
-const GRAIN_DITHER = 0.3;
+// GRAIN COLOUR (display and deposit pass share it). A grain is never a blend: the colour of the bed at eroded depth z is ONE layer's colour, and across a layer boundary
+// a per-grain hash decides which side a grain falls on (a dithered edge, not a crossfade: no purple between red and blue). Layer fi spans stack positions [fi, fi + 1) and
+// shows ITS OWN colour for its whole thickness (pass 3b-i fix; the 3a-look rule put the boundary at fi + 0.5, so a layer showed to half its thickness): the lower layer's
+// grains show through only the last GRAIN_DITHER of it, with the share rising smoothstep(1 - GRAIN_DITHER, 1, p - fi), and AT the boundary every grain is the lower layer.
+// `iuv` is the image-space uv (v down), `h` the grain's hash in 0..1: the lower layer is picked when h < the ramp.
+const GRAIN_DITHER = 0.2;
 const GLSL_GRAIN = `
 vec3 grainLayerCol(vec2 iuv, float z, float h){
   float p = clamp(stackPos(z), 0.0, uNImg);
   float fi = floor(p);
-  float k = fi + ((h < smoothstep(0.5 - 0.5 * ${GRAIN_DITHER.toFixed(3)}, 0.5 + 0.5 * ${GRAIN_DITHER.toFixed(3)}, p - fi)) ? 1.0 : 0.0);
+  float k = fi + ((h < smoothstep(${(1 - GRAIN_DITHER).toFixed(3)}, 1.0, p - fi)) ? 1.0 : 0.0);
   vec3 c = textureLod(uVar, vec3(iuv, min(k, uNImg - 1.0)), 0.0).rgb;
   return k > uNImg - 0.5 ? WHITE : c;
 }
@@ -1357,12 +1379,13 @@ vec3 grainLayerCol(vec2 iuv, float z, float h){
 // MIRROR), at its centre, where the mask pass evaluates; the colour comes from the geometric mirror.
 // COLOUR. Never a blend, decided ONCE per event and texel, at the event's first substep, from the event's final geometry (the mask is still the one before the
 // event): the rim texel at radius r takes the colour of its MIRROR column (r' = R - (r - R) R / W along the same direction) at removed depth
-//     zc = mask_before(r') + Fc(f) Dbowl,   f = (r - R) / W,   Fc(f) = the fraction of the rim band's VOLUME outside f (rimOutside: the raised cosine x the annulus's r,
-//     closed form, counted from the outer edge in),   Dbowl = the crater increment inside the bowl (amount x 1 x wearMul, clamped at white: the flat part of the profile,
-//     so the feathered wall's shallow depth does not drive the colour)
+//     zc = mask_before(r') + z(Fc(f)),   f = (r - R) / W,   Fc(f) = the fraction of the rim band's VOLUME outside f (rimOutside: the raised cosine x the annulus's r,
+//     closed form, counted from the outer edge in),   z(F) = the DEPTH QUANTILE of the event's whole removed volume (quantZ below: F of the removed volume lies above z,
+//     the feathered wall included; pass 3b-i. The 3a-look map used F x Dbowl, the flat part of the profile, which ignored the wall's shallow volume: strike 39 % red for 53 % removed),
+//     x wearMul at the mirror column, clamped at the bottom of the stack
 // so the outermost rim volume shows the top of the column and the innermost the bottom, each layer's share of the rim volume = its share of the removed column. The
 // picture position stays the geometric mirror r'; only the depth uses the bowl. Picked
-// from the stack (grainLayerCol: nearest layer, hash-dithered boundary, hash per texel); where the mirror texel already holds deposit, the deposit's colour
+// from the stack (grainLayerCol: the layer at that depth, hash-dithered over the last GRAIN_DITHER of it, hash per texel); where the mirror texel already holds deposit, the deposit's colour
 // for the part of the cut that lies within it (zc - mask_before < the deposit height), else the stack colour. A thrown grain j: the crater-centre column at
 // mask_before(c) + u_j Dfinal(c), u_j from the event's seeded stream, one hash per grain: the discs are mixed colours in proportion to the layers removed at the
 // centre. Later substeps only add height. Top-grain rule applied to the event as a whole: the texel takes the incoming colour when the event's total there, tot, is
@@ -1383,6 +1406,7 @@ uniform vec4 uGd[${MAXS * NTHROW}];     // thrown grains: x, y (uv, v up), radiu
 uniform vec2 uSz, uAsp;        // field size in texels; physical extent in long-side units
 uniform float uMax;            // total thickness of the layers (the mask's bottom)
 uniform float uRatioOn;        // 0 = ratio 1 (the mask is only half-float: its increments are too coarse to divide)
+uniform float uQuant;          // 1 = the rim takes the colour at the DEPTH QUANTILE of the removed volume (pass 3b-i); 0 = the 3a-look bowl-depth map (GRAN.rimQuantile, identity tests)
 const vec3 WHITE = vec3(0.97, 0.935, 0.87);
 ${GLSL_MASK_RELIEF}
 ${GLSL_GRAIN}
@@ -1423,6 +1447,21 @@ float rimMass(float f, float k){                 // integral from 0 to f of (1 -
 }
 float rimOutside(float f, float k){              // fraction of the rim band's volume that lies OUTSIDE band fraction f (counted from the outer edge in), r-weighting included
   return 1.0 - rimMass(f, k) / rimMass(1.0, k);
+}
+// DEPTH QUANTILE of the removed volume (pass 3b-i, rim colour). The crater D(r) = Dmax (1 - smoothstep(f0 R, R, r)) removes, above depth z, the volume
+//   V(z) = integral from 0 to z of pi r(z')^2 dz'   (the set D > z' is a disc of radius r(z'))
+// Substituting x = (r(z') - f0 R) / ((1 - f0) R), z' = Dmax (1 - x^2 (3 - 2x)), dz' = -Dmax 6 x (1 - x) dx:
+//   V(z) = pi R^2 Dmax (G(1) - G(x_z)),   G(x) = 6 (a^2 x^2 / 2 + (2ab - a^2) x^3 / 3 + (b^2 - 2ab) x^4 / 4 - b^2 x^5 / 5),   a = f0, b = 1 - f0
+// (G(1) = 2 C(f0), the crater's volume per pi R^2 Dmax: checked at f0 = 0 and 1.) The share of the removed volume above z is 1 - G(x_z) / G(1); setting it to F
+// and solving G(x_z) = (1 - F) G(1) by 14 bisection steps (G rises with x) gives the depth z = Dmax (1 - smoothstep(x_z)): returned as a fraction of Dmax.
+// Closed-form integral + bisection, no table: a 16-entry table per event would cost 16 events x 16 floats of uniforms, over the program's budget.
+float quantZ(float F, float f0){
+  float a = f0, b = 1.0 - f0;
+  float c2 = 0.5 * a * a, c3 = (2.0 * a * b - a * a) / 3.0, c4 = (b * b - 2.0 * a * b) * 0.25, c5 = -0.2 * b * b;
+  float G1 = 6.0 * (c2 + c3 + c4 + c5), tg = (1.0 - clamp(F, 0.0, 1.0)) * G1, lo = 0.0, hi = 1.0;
+  for (int i = 0; i < 14; i++) { float x = 0.5 * (lo + hi); float G = 6.0 * x * x * (c2 + x * (c3 + x * (c4 + x * c5))); if (G < tg) lo = x; else hi = x; }
+  float xz = 0.5 * (lo + hi);
+  return 1.0 - xz * xz * (3.0 - 2.0 * xz);
 }
 float matchedX(float f, float a, float k){      // x = r'' / R for the rim ring at band fraction f
   float q = (rimMass(1.0, k) - rimMass(f, k)) / rimMass(1.0, k);
@@ -1470,9 +1509,11 @@ void main(){
         if (uRatioOn > 0.5) inc *= craterRatio(texOf((cc + dv / r * (matchedX(fr, b.w, W / R) * R)) / uAsp), first);   // fed by the crater mass of its sector (see MASS-MATCHED MIRROR)
         if (inc > 0.0) {
           incSum += inc; totSum += tot; sofarSum += tot * p0;
-          if (first && tot > bestTot) {
+          if ((first || !(d.x > 0.0)) && tot > bestTot) {          // or later, if repose / wind emptied the texel meanwhile (they zero its colour): its later increments were black (review 3b-i)
             bestTot = tot;
-            bestCol = slabCol(uvM, rimOutside(fr, W / R) * cutDepth(uvM, a.w, 1.0), hT);   // depth by cumulative rim volume, over the bowl's full depth (feather 1: the flat part of the profile)
+            float fo = rimOutside(fr, W / R);
+            bestCol = slabCol(uvM, uQuant > 0.5 ? cutDepth(uvM, a.w * quantZ(fo, b.w), 1.0)      // depth = the fo-quantile of the removed volume (the feathered wall counted), clamped at the bottom of the stack as before
+                                                : fo * cutDepth(uvM, a.w, 1.0), hT);          // 3a-look: cumulative rim volume x the bowl's full depth (identity tests)
           }
         }
       }
@@ -1493,7 +1534,7 @@ void main(){
         if (uRatioOn > 0.5) inc *= craterRatio(texOf(a.xy), first);   // fed by the crater centre
         if (inc <= 0.0) continue;
         incSum += inc; totSum += tot; sofarSum += tot * p0;
-        if (first && tot > bestTot) {
+        if ((first || !(d.x > 0.0)) && tot > bestTot) {
           bestTot = tot;
           bestCol = slabCol(a.xy, floor(q.w) / 255.0 * cutDepth(a.xy, a.w, 1.0), hash12(q.xy * 977.0));   // one colour per grain
         }
@@ -1516,10 +1557,11 @@ void main(){
 // texture. A texel with no deposit in it or beside it cannot send or receive: it is copied.
 // Colour: no averaging. If the largest single inflow qmax is at least TOPGRAIN of the deposit the texel holds after the step, the texel takes the colour of
 // that source (ties: left, right, below, above); else it keeps its own. A texel left with no deposit is (0, 0,0,0).
+// Second output (pass 3b-i, REPOSE GATE): an R8 "moved" accumulator, max(previous, 1 where mine or inq is non-zero), so it holds every texel that moved in ANY iteration since it was cleared.
 const FS_REPOSE = `#version 300 es
 precision highp float; precision highp sampler2D;
 const float K = ${REPOSE_K.toFixed(3)}, Q = ${REPOSE_Q.toFixed(8)}, TOPGRAIN = ${TOPGRAIN.toFixed(4)};
-uniform sampler2D uDep, uMask;
+uniform sampler2D uDep, uMask, uMoved;   // uMoved: the "moved" accumulator (R8), read and written (max) by this pass
 uniform vec2 uSz;
 uniform float uS;              // slope limit: tan(repose angle) x (texel length / depth length), depth units per texel
 const ivec2 N[4] = ivec2[4](ivec2(-1, 0), ivec2(1, 0), ivec2(0, -1), ivec2(0, 1));
@@ -1540,13 +1582,15 @@ vec4 outflow(ivec2 s){          // what texel s sends to its left, right, lower,
   if (tot > dx) q *= dx / tot;
   return floor(q / Q) * Q;
 }
-out vec4 o;
+layout(location = 0) out vec4 o;
+layout(location = 1) out vec4 oMoved;      // R8 "moved" accumulator: 1 where a texel sent or received grains in any repose iteration since the last check (REPOSE GATE)
 void main(){
   ivec2 ip = ivec2(gl_FragCoord.xy);
   vec4 d = texelFetch(uDep, ip, 0);
+  float mv0 = texelFetch(uMoved, ip, 0).x;
   bool anyDep = d.x > 0.0;
   for (int k = 0; k < 4; k++) { ivec2 n = ip + N[k]; if (inside(n) && texelFetch(uDep, n, 0).x > 0.0) anyDep = true; }
-  if (!anyDep) { o = d; return; }
+  if (!anyDep) { o = d; oMoved = vec4(mv0, 0.0, 0.0, 1.0); return; }
   vec4 mine = outflow(ip);
   vec4 inq = vec4(0.0);          // inflow from the left, right, lower, upper neighbour: that neighbour's outflow toward us (its right, left, upper, lower)
   const int OPP[4] = int[4](1, 0, 3, 2);
@@ -1560,10 +1604,166 @@ void main(){
   }
   if (nx <= 1e-6) { nx = 0.0; col = vec3(0.0); }
   o = vec4(nx, col);
+  bool mv = (mine.x + mine.y + mine.z + mine.w + inq.x + inq.y + inq.z + inq.w) > 0.0;
+  oMoved = vec4(mv ? 1.0 : mv0, 0.0, 0.0, 1.0);
+}`;
+
+// WIND (pass 3b-i, IMPACTS: "grains carried downwind, lee piles"). A blow is a gust over a BAND through (x, y) along its direction u (0 = toward +x, 90 deg = toward the top of
+// the picture), of half-width Wb = 0.15 + 0.85 area (long-side units across the wind; area 1 = the whole canvas), flat over 75 % of Wb and a raised cosine to 0 over the outer
+// 25 %, unlimited along the wind. Its strength is energy x envelope(t): a smoothstep rise over Attack, held, a smoothstep fall over the last WIND_FALL (25 %) of the gust
+// (Attack + Duration, at least 0.04 s). Local wind  windU = strength x footprint  (0..2).
+// TRANSPORT = STOCHASTIC HOPS (pass 3b-i fix; the first build lifted the whole loose film of every texel every substep and carried it a fixed 20 texels: a conveyor at 1200 texels/s
+// that printed D-wide stripes upwind and a ringed tube in the lee, and nothing settled except in full shelter). Per sender texel s, per blow i, per substep (salt = the substep):
+//   hop      p_i(s) = clamp(WIND_HOP x windLift x windU_i(s) x exposure_i(s), 0, 1);  the texel hops iff  h(s, salt, i) < p_i.  exposure_i = clamp(1 + WIND_SLOPE max(0, up) - WIND_SHELTER
+//            max(0, -up), 0, 3), up = (H(s) - H(s - n_i)) / (|n_i| S): the slope rising into the wind (+) or falling away from it (-), in units of the repose limit S, n_i the 8-neighbour
+//            offset nearest to the wind direction, H = deposit - shown eroded depth (the repose's H)
+//   release  a hopping texel lets go of  g = min(deposit, WIND_GRAB)  (rounded DOWN to Q) from the deposit; if its deposit is below WIND_GRAB it also takes  windBed x (WIND_GRAB - deposit)
+//            (rounded down to Q, at most what the bed has left above the white base) from the BED: the mask TARGET advances by it, the same telescoping increment as a crater. Several
+//            blows share the deposit and the bed: blow i = 0 .. MAXW-1 takes what the blows before it left
+//   landing  at  s + D_{i,k} + lateral:  k = floor(WIND_K h2(s, salt, i)) picks the distance class, D_{i,k} = round(len_i g_k u_i) texels (len_i = windCarry x strength_i x fieldRes, g_k the
+//            normalised exponential quantiles WIND_G, the length clamped to 1 .. WIND_DMAX, recomputed every substep), and lateral = one of {-1, 0, +1} x the rounded perpendicular of u
+//            (h3): 12 landing offsets per blow, one chosen per hop by the sender
+// GATHER, exactly conserving. The receiver p visits, for each active blow i and each of the 12 (k, lateral) offsets, the sender s = p - D_{i,k} - lateral; if s is inside the field (or
+// wrapped, GRAN.windWrap) AND the sender's own draw chose exactly this (k, lateral) AND it hops, p adds the sender's release. A sender chooses ONE offset, so it appears in exactly one
+// receiver's sum; the receiver evaluates the sender's release with the very function (one call site, `lift`) the sender uses to remove it: no scatter, no flux texture, the pair agrees to
+// the last bit. Grains whose landing is outside the field are lost (the sender still lets go of them). One pass per substep, after the deposit pass and before the repose; MRT: deposit and mask.
+// Draws are an integer hash (PCG3D) of (texel, substep, blow): the same on every device.
+// COLOUR: the top-grain rule as in the repose: the largest single inflow takes the texel's colour when it is at least TOPGRAIN of the deposit after the step, or when the texel is left bare (less than DEP_EPS: with up to 48 senders a bare texel can be hit by five lumps none of which is a quarter of the total), no averaging; the
+// sender's larger part decides: deposit gives its own colour, bed grainLayerCol at the middle of the cut (hash per sender texel).
+// Cost per fragment, one active blow: own lift 2 + 2 fetches (deposit and mask at s and at its upwind neighbour), plus per landing offset whose sender chose it 4 more (expected 1 of 12,
+// worst case 12: all candidates' hashes are ALU only), plus the winner's colour 1 (deposit) or 2 (mask, layer array): at most 2 + 4 + 12 x 4 + 2 = 56 fetches.
+const FS_WIND = `#version 300 es
+precision highp float; precision highp int; precision highp sampler2D; precision highp sampler2DArray;
+#define MAXW ${MAXW}
+#define WK ${WIND_K}
+const float Q = ${REPOSE_Q.toFixed(8)}, TOPGRAIN = ${TOPGRAIN.toFixed(4)}, DEP_EPS = ${DEP_EPS.toFixed(4)}, GRAB = ${WIND_GRAB.toFixed(8)}, WSLOPE = ${WIND_SLOPE.toFixed(3)}, WSHELTER = ${WIND_SHELTER.toFixed(3)};
+const vec3 WHITE = vec3(0.97, 0.935, 0.87);
+uniform sampler2D uDep, uMask;
+uniform sampler2DArray uVar;
+uniform vec4 uWa[MAXW];        // per blow: centre x, y (physical, long-side units, v up), unit direction ux, uy
+uniform vec4 uWb[MAXW];        // half-width Wb (long-side units), strength (energy x envelope; 0 = empty slot), lateral offset px, py (whole texels, the rounded perpendicular of u)
+uniform vec4 uWc[MAXW];        // upwind neighbour offset nx, ny (whole texels, round(u)), its length
+uniform vec4 uWd[MAXW * 2];    // hop vectors in whole texels: blow i, classes k = 0, 1 in uWd[2 i] (xy, zw), classes 2, 3 in uWd[2 i + 1]
+uniform vec2 uSz, uAsp;        // field size in texels; physical extent in long-side units
+uniform vec4 uP;               // WIND_HOP x windLift, windBed, repose slope limit S (depth units per texel), unused
+uniform vec3 uQ;               // total thickness of the layers (the mask's bottom), bed lift on (0 on a 16-bit mask), wrap (test hook)
+uniform float uNImg, uSalt;     // uSalt: the substep (mod 1024), the hash's time
+${GLSL_STACK}
+${GLSL_GRAIN}
+float hash12(vec2 p){ vec3 q = fract(vec3(p.xyx) * .1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+uvec3 pcg3(uvec3 v){
+  v = v * 1664525u + 1013904223u;
+  v.x += v.y * v.z; v.y += v.z * v.x; v.z += v.x * v.y;
+  v ^= v >> 16u;
+  v.x += v.y * v.z; v.y += v.z * v.x; v.z += v.x * v.y;
+  return v;
+}
+uvec3 draw(ivec2 s, int i){ return pcg3(uvec3(uint(s.x), uint(s.y), uint(uSalt) * 4u + uint(i))); }   // x: hop, y: distance class, z: lateral
+float u01(uint r){ return float(r >> 8u) * (1.0 / 16777216.0); }                                      // 0 <= u < 1, exact
+bool inside(ivec2 p){ return p.x >= 0 && p.y >= 0 && p.x < int(uSz.x) && p.y < int(uSz.y); }
+ivec2 wrapP(ivec2 p){ ivec2 n = ivec2(uSz); return ((p % n) + n) % n; }
+float Hof(ivec2 p){ return texelFetch(uDep, p, 0).x - texelFetch(uMask, p, 0).y; }
+// what texel s lets go of, per blow: qd out of the deposit, qb out of the bed (both 0 where it does not hop). The only place this is computed (one call site in main).
+void lift(ivec2 s, out vec4 qd, out vec4 qb){
+  qd = vec4(0.0); qb = vec4(0.0);
+  vec4 dp = texelFetch(uDep, s, 0);
+  vec2 mk = texelFetch(uMask, s, 0).xy;
+  float dv = max(dp.x, 0.0), bv = uQ.y > 0.5 ? max(uQ.x - mk.x, 0.0) : 0.0;
+  if (!(dv > 0.0 || bv > 0.0)) return;
+  float Hs = dp.x - mk.y;
+  vec2 pc = (vec2(s) + 0.5) / uSz * uAsp;
+  float left = dv, bleft = bv;
+  bool wrap = uQ.z > 0.5;
+  for (int i = 0; i < MAXW; i++) {
+    float str = uWb[i].y;
+    if (str <= 0.0) continue;
+    vec4 a = uWa[i];
+    float Wb = uWb[i].x;
+    float across = abs(-(pc.x - a.x) * a.w + (pc.y - a.y) * a.z);
+    if (across >= Wb) continue;
+    float fp = across <= 0.75 * Wb ? 1.0 : 0.5 * (1.0 + cos(3.14159265 * (across - 0.75 * Wb) / (0.25 * Wb)));
+    ivec2 su = s - ivec2(uWc[i].xy);
+    if (wrap) su = wrapP(su);
+    float Hu = (wrap || inside(su)) ? Hof(su) : Hs;
+    float up = (Hs - Hu) / (uWc[i].z * uP.z);
+    float ex = clamp(1.0 + WSLOPE * max(up, 0.0) - WSHELTER * max(-up, 0.0), 0.0, 3.0);
+    float pr = clamp(uP.x * str * fp * ex, 0.0, 1.0);
+    if (!(u01(draw(s, i).x) < pr)) continue;
+    float g = floor(min(left, GRAB) / Q) * Q;
+    float want = left < GRAB ? uP.y * (GRAB - left) : 0.0;
+    float b = floor(min(want, bleft) / Q) * Q;
+    qd[i] = g; qb[i] = b;
+    left -= g; bleft -= b;
+  }
+}
+vec3 bedCol(ivec2 s, float q){            // the grains cut from the bed at s: the layer at the middle of the cut
+  vec2 uv = (vec2(s) + 0.5) / uSz;
+  return grainLayerCol(vec2(uv.x, 1.0 - uv.y), texelFetch(uMask, s, 0).x + 0.5 * q, hash12(vec2(s) + vec2(3.6, 8.2)));
+}
+layout(location = 0) out vec4 o0;     // deposit
+layout(location = 1) out vec4 o1;     // mask (target advanced by the bed lift)
+void main(){
+  ivec2 ip = ivec2(gl_FragCoord.xy);
+  vec4 d = texelFetch(uDep, ip, 0);
+  vec4 m = texelFetch(uMask, ip, 0);
+  bool wrap = uQ.z > 0.5;
+  float outD = 0.0, outB = 0.0, inSum = 0.0, best = 0.0, bestQc = 0.0;
+  ivec2 bestS = ip;
+  bool bestDep = true;
+  // t = 0: this texel as a SENDER; t = 1 .. MAXW x 12: blow i = (t - 1) / 12, landing offset (k, l) = ((t - 1) % 12) / 3, % 3: this texel as a RECEIVER of the sender p - D_{i,k} - (l - 1) lateral_i
+  for (int t = 0; t < 1 + MAXW * 3 * WK; t++) {
+    ivec2 s = ip;
+    int i = 0;
+    if (t > 0) {
+      int u = t - 1;
+      i = u / (3 * WK);
+      int kl = u - i * 3 * WK;
+      int k = kl / 3;
+      int l = kl - k * 3;
+      if (uWb[i].y <= 0.0) continue;
+      vec4 dd = uWd[2 * i + k / 2];
+      ivec2 D = ivec2((k - 2 * (k / 2)) == 0 ? dd.xy : dd.zw);
+      s = ip - D - ivec2(uWb[i].zw) * (l - 1);
+      if (wrap) s = wrapP(s); else if (!inside(s)) continue;
+      uvec3 r = draw(s, i);
+      if (min(int(u01(r.y) * float(WK)), WK - 1) != k || min(int(u01(r.z) * 3.0), 2) != l) continue;     // the sender chose another offset
+    }
+    vec4 qd, qb;
+    lift(s, qd, qb);
+    if (t == 0) { outD = qd.x + qd.y + qd.z + qd.w; outB = qb.x + qb.y + qb.z + qb.w; continue; }
+    float qa = qd[i], qc = qb[i], qi = qa + qc;
+    if (!(qi > 0.0)) continue;
+    inSum += qi;
+    if (qi > best) { best = qi; bestS = s; bestDep = qa >= qc; bestQc = qc; }
+  }
+  if (!(outD > 0.0 || outB > 0.0 || inSum > 0.0)) { o0 = d; o1 = m; return; }
+  float nx = d.x - outD + inSum;
+  vec3 col = d.yzw;
+  if (best > 0.0 && (d.x - outD < DEP_EPS || best >= TOPGRAIN * nx)) col = bestDep ? texelFetch(uDep, bestS, 0).yzw : bedCol(bestS, bestQc);   // a texel left bare takes the largest inflow's colour (as the deposit pass: before < DEP_EPS); without it a bare texel hit by five or more lumps at once kept (0, 0, 0)
+  if (nx <= 1e-6) { nx = 0.0; col = vec3(0.0); }
+  o0 = vec4(nx, col);
+  o1 = vec4(m.x + outB, m.yzw);
+}`;
+
+// REPOSE GATE reduction (pass 3b-i): the "moved" accumulator (R8, field size) -> its maximum in two draws, 32 x 32 blocks then one texel. A maximum, not the mip chain's mean: a mean in
+// 8 bits loses a lone moving texel after five levels (255 -> 64 -> 16 -> 4 -> 1 -> 0), and a slide is a few hundred texels of 262,144.
+const FS_REDUCE = `#version 300 es
+precision highp float; precision highp sampler2D;
+uniform sampler2D uSrc;
+uniform vec2 uSrcSz;
+out vec4 o;
+void main(){
+  ivec2 b = ivec2(gl_FragCoord.xy) * 32;
+  float m = 0.0;
+  for (int j = 0; j < 32; j++) for (int i = 0; i < 32; i++) {
+    ivec2 p = b + ivec2(i, j);
+    if (p.x < int(uSrcSz.x) && p.y < int(uSrcSz.y)) m = max(m, texelFetch(uSrc, p, 0).x);
+  }
+  o = vec4(m, 0.0, 0.0, 1.0);
 }`;
 
 // Granular display. Matte sand: no specular (a granular surface scatters, it does not mirror). Colour of a pixel: the deposit's colour where the texel holds
-// deposit (x > 0), else the stack colour at the shown eroded depth, PICKED per grain (grainLayerCol: the nearest layer, a hash-dithered boundary; the liquid and
+// deposit (x > 0), else the stack colour at the shown eroded depth, PICKED per grain (grainLayerCol: the layer at that depth, a hash-dithered last fifth; the liquid and
 // solid keep their layerMix crossfade, the sand has none: no bevel, no lip). A thin deposit
 // (0 .. 4 DEP_EPS) is scattered: the grain noise decides pixel by pixel, so it reads as loose grains, not a tint. Grain: a 2-octave value noise of period
 // grainSize px at 1024 (offset by the piece's map seed, constant in time) times +-grainContrast, plus a 1-px hash speckle at a third of it. Light: diffuse of the
@@ -1607,7 +1807,7 @@ void main(){
   float p0 = clamp(stackPos(zb), 0.0, uNImg);
   // grain
   vec2 gp = up * (1024.0 / uGrainPx) + uGrOff;
-  vec3 bed = grainLayerCol(iuv, zb, hash12(floor(gp) + vec2(31.7, 5.3)));      // one layer's colour per grain (nearest, hash-dithered boundary), never a blend
+  vec3 bed = grainLayerCol(iuv, zb, hash12(floor(gp) + vec2(31.7, 5.3)));      // one layer's colour per grain (its own layer, hash-dithered over the last GRAIN_DITHER), never a blend
   float gn = 0.65 * vnoise(gp) + 0.35 * vnoise(gp * 2.17 + vec2(17.1, 9.2));
   float speck = hash12(gl_FragCoord.xy);
   float cover = (dp.x > 0.0 && gn <= clamp(dp.x / (4.0 * DEP_EPS), 0.0, 1.0)) ? 1.0 : 0.0;
@@ -1662,7 +1862,7 @@ function makeProg(fs, names, vs) {
 const LIGHT_U = ['uTh', 'uEdgeSharp', 'uLipTex', 'uLdir', 'uLaz', 'uTanE', 'uLcol', 'uAmb', 'uLint', 'uEnvRot'];   // shared by both display shaders
 const RELIEF_U = ['uLHgt', 'uHasLH', 'uAnyLH', 'uLBump', 'uLHSz'];                                                  // per-layer height maps, read by both display shaders
 const MASK_RELIEF_U = ['uLHgt', 'uHgtM', 'uTh', 'uNImg', 'uHasLH', 'uRWear', 'uLHLod', 'uHasHM', 'uHMLod'];            // relief wear, read by both mask shaders
-let progSim, progTens, progMask, progDerive, progDisplay, progCrack, progFrag, progMaskS, progDisplayS, progDep, progRepose, progDisplayG;
+let progSim, progTens, progMask, progDerive, progDisplay, progCrack, progFrag, progMaskS, progDisplayS, progDep, progRepose, progDisplayG, progWind, progReduce;
 try {
   progSim = makeProg(FS_SIM, ['uState', 'uC2', 'uDamp', 'uEdge', 'uSpread', 'uRs', 'uSz', 'uAsp', 'uDa', 'uDb']);
   progTens = makeProg(FS_TENS, ['uState', 'uSz', 'uTens']);
@@ -1677,17 +1877,19 @@ try {
   progDisplayS = makeProg(FS_DISPLAY_SOLID, ['uCrack', 'uFrag', 'uMask', 'uVar', 'uReflect', 'uRefract', 'uIdle', 'uTime', 'uCrackRes', 'uCrackD', 'uNImg', 'uGrid', 'uGridL', 'uAsp',
     'uFPow', 'uSpecPow', 'uBrushStr', 'uBrushDir', 'uBevel', 'uPitAmt', 'uDepthH', 'uTint', 'uColA', 'uColB', 'uColC', 'uColD', 'uColP', 'uCov', 'uSc',
     'uAlbT', 'uHgtT', 'uRghT', 'uHasAlb', 'uHasHgt', 'uHasRgh', 'uBump', 'uHgtSz'].concat(LIGHT_U, RELIEF_U));
-  progDep = makeProg(FS_DEP, ['uDep', 'uMask', 'uMaskB', 'uVar', 'uMa', 'uMb', 'uGp', 'uGd', 'uSz', 'uAsp', 'uMax', 'uRatioOn'].concat(MASK_RELIEF_U));
-  progRepose = makeProg(FS_REPOSE, ['uDep', 'uMask', 'uSz', 'uS']);
+  progDep = makeProg(FS_DEP, ['uDep', 'uMask', 'uMaskB', 'uVar', 'uMa', 'uMb', 'uGp', 'uGd', 'uSz', 'uAsp', 'uMax', 'uRatioOn', 'uQuant'].concat(MASK_RELIEF_U));
+  progRepose = makeProg(FS_REPOSE, ['uDep', 'uMask', 'uMoved', 'uSz', 'uS']);
+  progWind = makeProg(FS_WIND, ['uDep', 'uMask', 'uVar', 'uWa', 'uWb', 'uWc', 'uWd', 'uSz', 'uAsp', 'uP', 'uQ', 'uNImg', 'uSalt', 'uTh']);
+  progReduce = makeProg(FS_REDUCE, ['uSrc', 'uSrcSz']);
   progDisplayG = makeProg(FS_DISPLAY_GRAN, ['uDep', 'uMask', 'uVar', 'uNImg', 'uGrid', 'uGridL', 'uAsp', 'uDepthH', 'uGrainPx', 'uGrCon', 'uGrOff', 'uShadeK'].concat(LIGHT_U, RELIEF_U));
 } catch (err) { fail(String(err.message || err)); return; }
 
 const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
 
-function makeTarget(w, h, internal, type, filter) {
+function makeTarget(w, h, internal, type, filter, format) {
   const tex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, tex);
-  gl.texImage2D(gl.TEXTURE_2D, 0, internal, w, h, 0, gl.RGBA, type, null);
+  gl.texImage2D(gl.TEXTURE_2D, 0, internal, w, h, 0, format || gl.RGBA, type, null);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -1698,8 +1900,8 @@ function makeTarget(w, h, internal, type, filter) {
   const ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
   return { tex, fbo, ok, w, h };
 }
-function makePair(w, h, internal, type, filter) {
-  const a = makeTarget(w, h, internal, type, filter), b = makeTarget(w, h, internal, type, filter);
+function makePair(w, h, internal, type, filter, format) {
+  const a = makeTarget(w, h, internal, type, filter, format), b = makeTarget(w, h, internal, type, filter, format);
   return { t: [a, b], i: 0, ok: a.ok && b.ok, get cur() { return this.t[this.i]; }, get nxt() { return this.t[1 - this.i]; }, flip() { this.i = 1 - this.i; } };
 }
 
@@ -1710,6 +1912,8 @@ function makePair(w, h, internal, type, filter) {
 // display shader, so no float-linear extension is needed). It has its own long side, `fieldRes` (FIELD_RES = 512): 512 only where textures
 // of 4096 exist and the 32-bit target is complete at that size, else the old 256. The probes run once; a later aspect change reuses their result.
 let state, mask, derived, crackMap, incMap, fragMap, dep;      // dep: the granular deposit pair (null where it cannot be made)
+let moved = null, red1 = null, red2 = null, mrtRepose = null, mrtWind = null;   // granular, pass 3b-i: the R8 "moved" accumulator pair, its two reduction targets, and the multiple-render-target framebuffers of the repose (deposit + moved) and wind (deposit + mask) passes
+const pbos = [gl.createBuffer(), gl.createBuffer()];       // the 4-byte buffers the 1x1 reduction is read into, asynchronously, alternately (REPOSE GATE)
 let granularOk = false, dep32 = false, mask32 = false;   // dep32: the deposit pair is RGBA32F; mask32: the erosion mask is RGBA32F (the deposit pass divides its increments)
 let f32 = false, fieldRes = GRID, fieldsProbed = false;
 let simW = GRID, simH = GRID, fieldW = GRID, fieldH = GRID, crackW = CRACK_RES, crackH = CRACK_RES;
@@ -1720,9 +1924,21 @@ function makeMaskPair(res) {
   mask32 = false;
   return makePair(w, h, gl.RGBA16F, gl.HALF_FLOAT, gl.NEAREST);
 }
+// A framebuffer with two colour attachments (draw buffers 0 and 1) for the passes that write two fields at once; `ok` is its completeness.
+function makeMrt(a, b) {
+  const f = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, f);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, a.tex, 0);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, b.tex, 0);
+  gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
+  const fbo = f; fbo.ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+  return fbo;
+}
 function buildFields() {
-  [state, mask, dep].forEach((pr) => { if (pr) pr.t.forEach(disposeTarget); });
-  [derived, crackMap, incMap, fragMap].forEach((q) => { if (q) disposeTarget(q); });
+  [state, mask, dep, moved].forEach((pr) => { if (pr) pr.t.forEach(disposeTarget); });
+  [derived, crackMap, incMap, fragMap, red1, red2].forEach((q) => { if (q) disposeTarget(q); });
+  [mrtRepose, mrtWind].forEach((m) => { if (m) m.forEach((r) => r.forEach((f) => gl.deleteFramebuffer(f))); });
+  moved = red1 = red2 = mrtRepose = mrtWind = null;
   [simW, simH] = dimsFor(GRID);
   state = null;
   if (extF && (!fieldsProbed || f32)) { state = makePair(simW, simH, gl.RGBA32F, gl.FLOAT, gl.NEAREST); if (!fieldsProbed) f32 = state.ok; }
@@ -1750,7 +1966,17 @@ function buildFields() {
   if (extF && !GRAN.depHalf) { dep = makePair(fieldW, fieldH, gl.RGBA32F, gl.FLOAT, gl.NEAREST); dep32 = dep.ok; if (!dep.ok) { dep.t.forEach(disposeTarget); dep = null; } }
   if (!dep) { dep = makePair(fieldW, fieldH, gl.RGBA16F, gl.HALF_FLOAT, gl.NEAREST); }
   granularOk = dep.ok;
-  if (!dep.ok) { dep.t.forEach(disposeTarget); dep = null; }
+  if (dep.ok) {      // the repose gate (pass 3b-i): an R8 accumulator pair, its two reduction targets (R8), and the MRT framebuffers; any failure refuses the family like a failed deposit
+    moved = makePair(fieldW, fieldH, gl.R8, gl.UNSIGNED_BYTE, gl.NEAREST, gl.RED);
+    red1 = makeTarget(Math.ceil(fieldW / 32), Math.ceil(fieldH / 32), gl.R8, gl.UNSIGNED_BYTE, gl.NEAREST, gl.RED);
+    red2 = makeTarget(1, 1, gl.R8, gl.UNSIGNED_BYTE, gl.NEAREST, gl.RED);
+    mrtRepose = [0, 1].map((i) => [0, 1].map((j) => makeMrt(dep.t[i], moved.t[j])));        // [deposit index][moved index]
+    mrtWind = [0, 1].map((i) => [0, 1].map((j) => makeMrt(dep.t[i], mask.t[j])));           // [deposit index][mask index]
+    const all = [].concat(...mrtRepose, ...mrtWind);
+    granularOk = moved.ok && red1.ok && red2.ok && all.every((f) => f.ok);
+    pbos.forEach((b) => { gl.bindBuffer(gl.PIXEL_PACK_BUFFER, b); gl.bufferData(gl.PIXEL_PACK_BUFFER, 4, gl.STREAM_READ); }); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+  }
+  if (!granularOk) { if (dep) dep.t.forEach(disposeTarget); [moved, red1, red2].forEach((q) => { if (q) (q.t ? q.t : [q]).forEach(disposeTarget); }); dep = moved = red1 = red2 = null; mrtRepose = mrtWind = null; }
   fieldsProbed = true;
   return true;
 }
@@ -2929,7 +3155,9 @@ function maskSolidPass() {
    0.25: drop R 0.085, strike R 0.136, grains inside the canvas); 1 is the literal reading. Not saved (a build constant, a test hook).
    ---------------------------------------------------------------------- */
 const GRAN_C = 1e9;
-let granSeq = 0, depEver = false, reposeUntil = -1, discsDropped = 0, granMapSeed = 1, granOff = [0, 0];   // depEver: some deposit pass has run; reposeUntil: the last substep (exclusive) the repose passes run
+let granSeq = 0, depEver = false, discsDropped = 0, granMapSeed = 1, granOff = [0, 0];   // depEver: some deposit (or wind) pass has run
+let winds = [], windsCut = 0;       // the blows active now (see WIND), and how many were replaced because MAXW were already blowing
+const aWa = new Float32Array(MAXW * 4), aWb = new Float32Array(MAXW * 4), aWc = new Float32Array(MAXW * 4), aWd = new Float32Array(MAXW * 8);
 const aGp = new Float32Array(MAXD * 4), aGd = new Float32Array(MAXS * NTHROW * 4), gMa = new Float32Array(MAXD * 4), gMb = new Float32Array(MAXD * 4);
 const buildWindow = (d) => (stepCount - d.t0) * DT < d.dur + d.Rrev / d.c + 0.1;            // an event is "building" (mask pass, deposit pass) for this long
 function makeGranular(ev) {
@@ -2989,31 +3217,156 @@ function depPass() {
   bindTex(3, gl.TEXTURE_2D_ARRAY, varTex, P.u.uVar);
   gl.uniform4fv(P.u.uMa, gMa); gl.uniform4fv(P.u.uMb, gMb); gl.uniform4fv(P.u.uGp, aGp); gl.uniform4fv(P.u.uGd, aGd);
   gl.uniform2f(P.u.uSz, fieldW, fieldH); gl.uniform2f(P.u.uAsp, ASPX, ASPY);
-  gl.uniform1f(P.u.uMax, maxDepth()); gl.uniform1f(P.u.uRatioOn, mask32 ? 1 : 0);
+  gl.uniform1f(P.u.uMax, maxDepth()); gl.uniform1f(P.u.uRatioOn, mask32 ? 1 : 0); gl.uniform1f(P.u.uQuant, GRAN.rimQuantile ? 1 : 0);
   setReliefMask(P, 4, 5);                                 // thicknesses, layer count and Relief wear (the cut's depth uses wearMul)
   gl.drawArrays(gl.TRIANGLES, 0, 3);
   dep.flip();
 }
-// A slider that changes the slope limit (Repose angle, Depth scale) lets an existing pile settle again: the repose passes run for REPOSE_TAIL s more.
-function wakeRepose() { if (depEver) reposeUntil = Math.max(reposeUntil, stepCount + Math.round(REPOSE_TAIL / DT)); }
+// REPOSE GATE (pass 3b-i). The repose passes run while a granular event builds or wind blows, and afterwards until NOTHING MOVED for REPOSE_QUIET s (was: a fixed 8 s tail that froze
+// slides still going: drop 15 deg at Depth 0.8 stopped at slope ratio 1.20, a stress drop at 1.82).
+//   moved   FS_REPOSE writes a second output, an R8 field-size texture (ping-pong, 262 KB at 512^2): max(previous, 1 where the texel sent or received grains, mine or inq non-zero), so it
+//           holds every texel that moved in ANY iteration since it was cleared. Cost: one more texel read and one more 8-bit output per repose fragment, and 2 passes x 262,144 fragments less
+//           than the repose itself.
+//   check   every REPOSE_CHECK s of quiet substeps (CHECK_STEPS = 15): two draws reduce it to its MAXIMUM (32 x 32 blocks, then one texel; a mip chain would average, and in 8 bits a lone
+//           moving texel is gone after five levels), readPixels of that 1x1 into a PIXEL_PACK_BUFFER (no stall), a fenceSync, flush, and the accumulator is cleared. The result is READ
+//           CHECK_STEPS substeps later: getBufferSubData when the fence has signalled (clientWaitSync with timeout 0, never a blocking wait). The read happens at that fixed substep
+//           whatever the wall clock (the sim is deterministic: the same piece stops repose at the same substep on any machine); if the GPU is MORE than CHECK_STEPS substeps behind, the
+//           read itself waits for the data (counted in reposeInfo.waits; real-time play at 60 fps never gets there, the offline renderer and the test hooks do). GRAN.readNoWait leaves a late
+//           check for the next substep instead (never waits, but then the stop time depends on timing).
+//   rule    two consecutive checks (0.5 s) that read 0 stop the repose; any busy substep (event building, wind), a slider that changes the slope limit, restart resets the count.
+//           GRAN.reposeCap (s, default 0 = none) is a hard stop after that long without a busy substep.
+let reposeOn = false, reposeQuiet = 0, reposeFresh = true, reposeNext = 0, reposeStopped = -1, reposeBusyAt = 0, chkPending = null;
+const readBuf = new Uint8Array(4);
+let batch = 0;     // > 0 while many substeps run inside one JS task (#seek, the step hook): a browser reports a fence as signalled only between tasks, so there the check is read at once with a plain (stalling) readPixels and kept for its substep; the frame loop never sets it
+const reposeStat = { checks: 0, waits: 0, reads: 0, stops: 0, passes: 0 };
+function dropPending() { if (chkPending) { if (chkPending.sync) gl.deleteSync(chkPending.sync); chkPending = null; } }
+function clearMoved() { moved.t.forEach((t) => clearTarget(t, 0, 0, 0, 0)); }
+// A slider that changes the slope limit (Repose angle, Depth scale) lets an existing pile settle again.
+function wakeRepose() { if (depEver) { reposeOn = true; reposeFresh = true; reposeQuiet = 0; dropPending(); reposeBusyAt = stepCount; } }
 // Slope limit in depth units per texel: tan(angle) x (texel length / depth length). The real angle of the rendered heightfield (see GRANULAR for the units).
 // Depth scale 0 would make every slope infinite; it is held at 0.01 (a limit of ~10 depth units per texel: nothing slides).
 const reposeLimit = () => Math.tan(params.reposeAngle / DEG) / (fieldRes * Math.max(params.dscale, 0.01) * DEPTH_UNIT * GRAN.depthK);
 function reposePass() {
-  const P = pass(progRepose, dep.nxt);
+  const m = mrtRepose[1 - dep.i][1 - moved.i];
+  const P = pass(progRepose, { fbo: m, w: fieldW, h: fieldH });
   bindTex(0, gl.TEXTURE_2D, dep.cur.tex, P.u.uDep);
   bindTex(1, gl.TEXTURE_2D, mask.cur.tex, P.u.uMask);
+  bindTex(2, gl.TEXTURE_2D, moved.cur.tex, P.u.uMoved);
   gl.uniform2f(P.u.uSz, fieldW, fieldH); gl.uniform1f(P.u.uS, reposeLimit());
   gl.drawArrays(gl.TRIANGLES, 0, 3);
-  dep.flip();
+  dep.flip(); moved.flip();
+  reposeStat.passes++;
+}
+function reducePass(src, sw, sh, dst) {
+  const P = pass(progReduce, dst);
+  bindTex(0, gl.TEXTURE_2D, src.tex, P.u.uSrc); gl.uniform2f(P.u.uSrcSz, sw, sh);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+}
+function issueCheck() {
+  reducePass(moved.cur, fieldW, fieldH, red1);
+  reducePass(red1, red1.w, red1.h, red2);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, red2.fbo);
+  if (batch) {
+    gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, readBuf);
+    chkPending = { sync: null, buf: null, value: readBuf[0], at: stepCount + CHECK_STEPS };
+  } else {
+    const buf = pbos[reposeStat.checks & 1];
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, buf);
+    gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, 0);
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+    const sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+    gl.flush();
+    chkPending = { sync, buf, value: -1, at: stepCount + CHECK_STEPS };
+  }
+  clearMoved();
+  reposeStat.checks++;
+}
+function readCheck() {          // the pending check's value (0 = nothing moved), or -1 = not yet (readNoWait only)
+  const c = chkPending;
+  if (!c.sync) { chkPending = null; reposeStat.reads++; return c.value; }       // read at once in batch mode
+  const st = gl.clientWaitSync(c.sync, 0, 0);
+  if (st !== gl.ALREADY_SIGNALED && st !== gl.CONDITION_SATISFIED) { if (GRAN.readNoWait) return -1; reposeStat.waits++; }
+  gl.deleteSync(c.sync); chkPending = null;
+  gl.bindBuffer(gl.PIXEL_PACK_BUFFER, c.buf); gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, readBuf); gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+  reposeStat.reads++;
+  return readBuf[0];
+}
+// One substep of the gated repose; busy = an event is building or wind blows.
+function reposeStep(busy) {
+  if (!GRAN.repose) return;
+  if (busy) { reposeOn = true; reposeFresh = true; reposeQuiet = 0; dropPending(); reposeBusyAt = stepCount; }
+  else if (reposeOn && reposeFresh) { reposeFresh = false; reposeQuiet = 0; clearMoved(); reposeNext = stepCount + CHECK_STEPS; }   // the first quiet substep: clean windows from here
+  if (!reposeOn) return;
+  for (let i = 0; i < REPOSE_ITER; i++) reposePass();
+  if (busy) return;
+  if (chkPending && stepCount >= chkPending.at) {
+    const v = readCheck();
+    if (v >= 0) { reposeQuiet = v === 0 ? reposeQuiet + 1 : 0; if (reposeQuiet >= Math.round(REPOSE_QUIET / REPOSE_CHECK)) { reposeOn = false; reposeStopped = stepCount; reposeStat.stops++; dropPending(); return; } }
+  }
+  if (GRAN.reposeCap > 0 && (stepCount - reposeBusyAt) * DT >= GRAN.reposeCap) { reposeOn = false; reposeStopped = stepCount; reposeStat.stops++; dropPending(); return; }
+  if (!chkPending && stepCount >= reposeNext) { issueCheck(); reposeNext += CHECK_STEPS; }
 }
 
-// One event -> the surface. sweep / blow / flow are stored and ignored (passes 4 / 5); everything else is counted and spawned.
+/* ----------------------------------------------------------------------
+   WIND (pass 3b-i): the blows. A blow is a record in `winds` (never in `drops`: it digs no crater), made by makeWind from the event: energy, area (-> half-width), direction, and the
+   gust's length Attack + Duration (at least 0.04 s). Each substep fillWind packs the active ones into the wind program's uniforms: strength = energy x envelope, the WIND_K hop vectors
+   D_k = round(len g_k u) in whole texels (len = windCarry x strength x fieldRes; each length clamped 1 .. WIND_DMAX), the lateral step (the rounded perpendicular of u), the band, the upwind
+   neighbour. Envelope: smoothstep rise over Attack, 1, smoothstep fall over the last WIND_FALL of the gust, evaluated at the middle of the substep. See FS_WIND for the transport.
+   ---------------------------------------------------------------------- */
+const sround = (v) => Math.sign(v) * Math.round(Math.abs(v));      // round half away from zero (a hop to the left and to the right are mirror images)
+function makeWind(ev) {
+  const ux = Math.cos(ev.dir), uy = Math.sin(ev.dir), nx = sround(ux), ny = sround(uy);
+  const px = sround(-uy) || 0, py = sround(ux) || 0;
+  return { t0: stepCount, total: Math.max(0.04, params.attack + ev.duration), att: params.attack, energy: ev.energy, area: ev.area, dir: ev.dir, ux, uy,
+           cx: ev.x * ASPX, cy: (1 - ev.y) * ASPY, Wb: 0.15 + 0.85 * clamp01(ev.area), nx: nx || 0, ny: ny || 0, nl: Math.hypot(nx, ny), px, py, D: [], Dmax: [], peak: 0, steps: 0 };
+}
+function addWind(w) {
+  winds = winds.filter((q) => (stepCount - q.t0) * DT < q.total);
+  if (winds.length >= MAXW) {           // the one with the least time left makes room
+    let k = 0; winds.forEach((q, i) => { if (q.t0 + q.total / DT < winds[k].t0 + winds[k].total / DT) k = i; });
+    winds.splice(k, 1); windsCut++;
+  }
+  winds.push(w);
+}
+const windEnv = (w, a) => ramp(a, w.att) * (1 - ramp(a - (1 - WIND_FALL) * w.total, WIND_FALL * w.total));
+function fillWind() {
+  aWa.fill(0); aWb.fill(0); aWc.fill(0); aWd.fill(0);
+  winds = winds.filter((q) => (stepCount - q.t0) * DT < q.total);
+  let n = 0;
+  for (const w of winds) {
+    const str = w.energy * windEnv(w, (stepCount + 0.5 - w.t0) * DT);
+    if (!(str > 0)) continue;
+    const len = params.windCarry * str * fieldRes;
+    const D = WIND_G.map((g) => { const L = Math.min(WIND_DMAX, Math.max(1, len * g)); return [sround(w.ux * L) || 0, sround(w.uy * L) || 0]; });   // |D| >= 1 always: the larger component of a unit vector of length >= 1 rounds to >= 1
+    aWa.set([w.cx, w.cy, w.ux, w.uy], n * 4); aWb.set([w.Wb, str, w.px, w.py], n * 4); aWc.set([w.nx, w.ny, w.nl, 0], n * 4);
+    aWd.set([D[0][0], D[0][1], D[1][0], D[1][1], D[2][0], D[2][1], D[3][0], D[3][1]], n * 8);
+    w.D = D; w.steps++;
+    if (str > w.peak) { w.peak = str; w.Dmax = D; }
+    n++;
+  }
+  return n;
+}
+function windPass() {
+  const m = mrtWind[1 - dep.i][1 - mask.i];
+  const P = pass(progWind, { fbo: m, w: fieldW, h: fieldH });
+  bindTex(0, gl.TEXTURE_2D, dep.cur.tex, P.u.uDep);
+  bindTex(1, gl.TEXTURE_2D, mask.cur.tex, P.u.uMask);
+  bindTex(2, gl.TEXTURE_2D_ARRAY, varTex, P.u.uVar);
+  gl.uniform4fv(P.u.uWa, aWa); gl.uniform4fv(P.u.uWb, aWb); gl.uniform4fv(P.u.uWc, aWc); gl.uniform4fv(P.u.uWd, aWd);
+  gl.uniform2f(P.u.uSz, fieldW, fieldH); gl.uniform2f(P.u.uAsp, ASPX, ASPY);
+  gl.uniform4f(P.u.uP, WIND_HOP * params.windLift, params.windBed, reposeLimit(), 0);
+  gl.uniform3f(P.u.uQ, maxDepth(), mask32 ? 1 : 0, GRAN.windWrap ? 1 : 0);
+  gl.uniform1f(P.u.uSalt, stepCount % 1024); gl.uniform1f(P.u.uNImg, variantN); gl.uniform4f(P.u.uTh, params.th0, params.th1, params.th2, params.th3);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  dep.flip(); mask.flip();
+}
+
+// One event -> the surface. sweep / flow are stored and ignored (passes 4 / 5), and so is blow off the granular family; everything else is counted and spawned.
 let ignoredEvents = [], ignoredN = 0;
 function applyEvent(ev) {
-  if (!IMPACT_ACTIVE[ev.type]) { ignoredN++; if (ignoredEvents.length < 1000) ignoredEvents.push(ev); return; }
+  if (!impactActive(ev.type)) { ignoredN++; if (ignoredEvents.length < 1000) ignoredEvents.push(ev); return; }
   evCount++;
-  if (family === 'solid') spawnCracks(ev); else if (family === 'granular') addDrop(makeGranular(ev)); else makeDrops(ev).forEach(addDrop);
+  if (family === 'solid') spawnCracks(ev); else if (family === 'granular') { if (ev.type === 'blow') addWind(makeWind(ev)); else addDrop(makeGranular(ev)); } else makeDrops(ev).forEach(addDrop);
 }
 function substep() {
   const t = stepCount * DT;
@@ -3031,11 +3384,14 @@ function substep() {
     stepCount++;
     return;
   }
-  if (family === 'granular') {                         // no wave simulation: the crater and its rim build, then the deposit slides to its angle of repose
+  if (family === 'granular') {                         // no wave simulation: the crater and its rim build, wind carries grains, then the deposit slides to its angle of repose
     fillDrops();
     maskPass();                                        // the crater first: the deposit pass reads the mask before and after it
-    if (fillGranular()) { depPass(); depEver = true; reposeUntil = stepCount + 1 + Math.round(REPOSE_TAIL / DT); }
-    if (stepCount < reposeUntil && GRAN.repose) for (let i = 0; i < REPOSE_ITER; i++) reposePass();   // while an event builds and for REPOSE_TAIL s after the last one
+    const building = fillGranular();
+    if (building) { depPass(); depEver = true; }
+    const blowing = fillWind() > 0;
+    if (blowing) { windPass(); depEver = true; }
+    reposeStep(building || blowing);                  // the relaxation: while an event builds or wind blows, and until nothing has moved for REPOSE_QUIET s (REPOSE GATE)
     stepCount++;
     return;
   }
@@ -3057,7 +3413,9 @@ function restart() {
   mask.t.forEach((t) => clearTarget(t, 0, 0, 0, 1));
   clearTarget(derived, 0, 0, 0, 1);
   if (dep) dep.t.forEach((t) => clearTarget(t, 0, 0, 0, 0));
-  granSeq = 0; depEver = false; reposeUntil = -1; discsDropped = 0; granMapSeed = seedVal();
+  granSeq = 0; depEver = false; discsDropped = 0; granMapSeed = seedVal();
+  winds = []; windsCut = 0; dropPending(); reposeOn = false; reposeQuiet = 0; reposeFresh = true; reposeNext = 0; reposeStopped = -1; reposeBusyAt = 0;
+  if (moved) clearMoved();
   { const r = mulberry32(((granMapSeed | 0) * 2654435761 + 0x6A1) >>> 0); granOff = [r() * 500, r() * 500]; }   // the grain noise is offset by the piece's map seed, frozen here
   clearTarget(crackMap, 0, 0, 0, 0); clearTarget(incMap, 0, 0, 0, 1); clearTarget(fragMap, 0, 0, 0, 0);
   cdrops = []; dropSeq = 0; occ.fill(0); occStamp.fill(0); frags = []; fragBorn = 0; testDrop = testDropSpec ? { t: testDropSpec } : null;
@@ -3218,12 +3576,12 @@ function frame(now) {
     if (acc >= DT) acc = 0;     // backlog: slow down rather than spiral
   }
   render();
-  const key = Math.floor(stepCount / 6) + ':' + evCount + ':' + fragBorn + ':' + ignoredN + ':' + discsDropped;
+  const key = Math.floor(stepCount / 6) + ':' + evCount + ':' + fragBorn + ':' + ignoredN + ':' + discsDropped + ':' + windsCut;
   if (key !== hudKey) {
     hudKey = key;
     if (family === 'solid' && fragBorn !== jsonFrag) { jsonFrag = fragBorn; syncValues(); }
     $('hud').textContent = (stepCount * DT).toFixed(1) + ' s · ' + evCount + ' drops' + ((manualN + tapN) ? ' (' + (manualN + tapN) + ' manual)' : '') +
-      (ignoredN ? ' · ' + ignoredN + ' ignored (pass 4/5)' : '') + (discsDropped ? ' · discs dropped: ' + discsDropped : '') +
+      (ignoredN ? ' · ' + ignoredN + ' ignored (pass 4/5)' : '') + (discsDropped ? ' · discs dropped: ' + discsDropped : '') + (windsCut ? ' · gusts cut: ' + windsCut : '') +
       (randomOn ? ' · random seed ' + randomSeed + ' · ' + randomLabel() : (randomDone ? ' · random done' : ''));
     $('rLeft').textContent = randomLabel();
     $('bRand').setAttribute('aria-pressed', randomOn ? 'true' : 'false');
@@ -3244,11 +3602,12 @@ const fmt = { reflect: (v) => v.toFixed(2), refract: (v) => v.toFixed(2), damp: 
               th0: (v) => v.toFixed(2), th1: (v) => v.toFixed(2), th2: (v) => v.toFixed(2), th3: (v) => v.toFixed(2), dscale: (v) => v.toFixed(2),
               bump: (v) => v.toFixed(2), brushTile: (v) => v.toFixed(2) + '×',
               layerBump: (v) => v.toFixed(2), reliefWear: (v) => v.toFixed(2), reliefCrack: (v) => v.toFixed(2),
-              reposeAngle: (v) => Math.round(v) + '\u00b0', grainSize: (v) => v.toFixed(1) + ' px', grainContrast: (v) => v.toFixed(2) };
+              reposeAngle: (v) => Math.round(v) + '\u00b0', grainSize: (v) => v.toFixed(1) + ' px', grainContrast: (v) => v.toFixed(2),
+              windLift: (v) => v.toFixed(2), windCarry: (v) => v.toFixed(3), windBed: (v) => v.toFixed(2) };
 const ids = { size: 'Size', attack: 'Attack', wave: 'Wave', rings: 'Rings', speed: 'Speed', damp: 'Damp', spread: 'Spread',
               lag: 'Lag', wear: 'Wear', edgeSharp: 'ESharp', edgeW: 'EW', edgeH: 'EH', th0: 'Th0', th1: 'Th1', th2: 'Th2', th3: 'Th3', dscale: 'DScale',
               reflect: 'Reflect', refract: 'Refract', idle: 'Idle', time: 'Time', bump: 'Bump', brushTile: 'Tile',
-              layerBump: 'LBump', reliefWear: 'RWear', reliefCrack: 'RCrack', reposeAngle: 'Repose', grainSize: 'GrSize', grainContrast: 'GrCon' };
+              layerBump: 'LBump', reliefWear: 'RWear', reliefCrack: 'RCrack', reposeAngle: 'Repose', grainSize: 'GrSize', grainContrast: 'GrCon', windLift: 'WLift', windCarry: 'WCarry', windBed: 'WBed' };
 
 const r3 = (v) => Math.round(v * 1000) / 1000;
 const seedVal = () => { const v = parseInt($('nSeed').value, 10); return Number.isFinite(v) ? Math.max(0, Math.min(999999, v)) : 1; };
@@ -3270,7 +3629,7 @@ function readout() {
     o.damping = null;
   } else if (family === 'granular') {
     $('wnote').textContent = 'no wave simulation · crater radius from Wavelength and Ring count (as a drop\u2019s footprint on a liquid) x ' + GRAN.rScale + ' · build time Attack + duration · repose limit ' +
-      reposeLimit().toFixed(3) + ' depth units per texel \u00b7 volume thrown beyond the canvas is lost';
+      reposeLimit().toFixed(3) + ' depth units per texel \u00b7 volume thrown or blown beyond the canvas is lost';
     o.damping = null;
   } else {
     const st = simState();
@@ -3291,7 +3650,7 @@ function readout() {
     layerHeights: lhFlags.map((f) => f > 0),     // which layers carry a height map in use (the maps themselves are not saved)
     // granular (A9): ONE block, split by when a key takes effect. map = frozen at piece start (pass 3b adds the cell-map parameters), live = uniforms, change at any time.
     // map.seed is the seed the piece was STARTED with (frozen at restart: granMapSeed); `seed` above is the field's current value, which a restart or Random 45 s takes up.
-    granular: { map: { seed: granMapSeed }, live: { reposeAngle: params.reposeAngle, grainSize: params.grainSize, grainContrast: params.grainContrast } },
+    granular: { map: { seed: granMapSeed }, live: { reposeAngle: params.reposeAngle, grainSize: params.grainSize, grainContrast: params.grainContrast, windLift: params.windLift, windCarry: params.windCarry, windBed: params.windBed } },
     textures: { albedo: slots.albedo.has, height: slots.height.has, roughness: slots.roughness.has, brushing: slots.brushing.has, hdri: slots.hdri.has } });   // which slots are filled, not the pixels
   return o;
 }
@@ -3362,7 +3721,7 @@ function applySurface(key) {
   family = fam;
   const d = isSolid ? solid : isGran ? granular : liquid;
   const set = { reflect: isGran ? d.reflect : d.fresnelBase, refract: d.refract, idle: d.idle, time: d.time };
-  if (isGran) Object.assign(set, { reposeAngle: d.repose, grainSize: d.grain, grainContrast: d.contrast, dscale: d.depthScale });   // the granular sliders (and Depth scale) go back to the surface's own numbers
+  if (isGran) Object.assign(set, { reposeAngle: d.repose, grainSize: d.grain, grainContrast: d.contrast, dscale: d.depthScale }, WIND_DEF);   // the granular sliders (and Depth scale) go back to the surface's own numbers
   else if (prevFam === 'granular') set.dscale = ARTIST.dscale;                                                                        // leaving sand or dust: the liquids' and solids' own Depth scale
   Object.keys(set).forEach((k) => { const s = $('s' + ids[k]); s.value = set[k]; s.dispatchEvent(new Event('input')); });
   followSurfaceLight(d);
@@ -3566,12 +3925,13 @@ const IMPACT_NOTE = {
   drop: 'Drop: a point, instant. It reads Energy only (area 0.1, duration 0 and direction 0 are fixed).',
   strike: 'Strike: reads Energy and Area. Liquid: a broad, low swell spread over the area plus a short splash ring. Solid: a fissure with spalling; the footprint grows with the area.',
   sweep: 'Sweep: pass 4. Selectable, but events of this type are stored and ignored for now.',
-  blow: 'Blow: pass 5. Selectable, but events of this type are stored and ignored for now.',
+  blow: 'Blow: acts on sand and dust only (pass 3b-i): a gust of wind, see Sand. On liquids and solids it is still pass 5: selectable, but events of this type are stored and ignored.',
   flow: 'Flow: pass 5. Selectable, but events of this type are stored and ignored for now.'
 };
-const IMPACT_NOTE_GRAN = {     // granular surfaces (the other types are inert there too)
+const IMPACT_NOTE_GRAN = {     // granular surfaces (sweep and flow are inert there too)
   drop: 'Drop on sand: a crater (radius from Wavelength and Ring count, depth and radius from Energy: \u221a(E/0.5)) whose grains, with their colours, pile on a rim half a radius wide. It reads Energy only.',
-  strike: 'Strike on sand: reads Energy and Area. A wider, shallower crater (half the depth), a rim one crater radius wide, and 24 thrown grains of mixed colours; rim and grains together hold the crater\u2019s volume (what falls beyond the canvas is lost).'
+  strike: 'Strike on sand: reads Energy and Area. A wider, shallower crater (half the depth), a rim one crater radius wide, and 24 thrown grains of mixed colours; rim and grains together hold the crater\u2019s volume (what falls beyond the canvas is lost).',
+  blow: 'Blow on sand: a gust over a band through the tap, along Direction (0\u00b0 = to the right, 90\u00b0 = up), as wide as Area (1 = the whole canvas), lasting Attack + Duration. Grains hop downwind, each hop one of four lengths around Wind carry, a little to either side; loose grains hop readily, the bare bed gives up a little under them, and they pile where the surface shelters them (lee faces). Reads Energy, Area, Duration, Direction. On liquids and solids Blow is still pass 5 (stored and ignored). Grains blown off the canvas are lost.'
 };
 const IMP_UI = { area: ['sArea', 'oArea', (v) => v.toFixed(2)], duration: ['sDur', 'oDur', (v) => v.toFixed(2) + ' s'], dir: ['sDir', 'oDir', (v) => Math.round(v) + '°'] };
 function showImpact() {
@@ -3685,11 +4045,12 @@ function applySettings(o, fname, patch) {
   if (isObj(Gr)) {
     if (Gr.map !== undefined) { if (isObj(Gr.map)) { if (Gr.map.seed !== undefined) { if (isNum(Gr.map.seed)) mapSeed = Gr.map.seed; else skipped.push('granular.map.seed'); } } else skipped.push('granular.map'); }
     if (Gr.live !== undefined) {
-      if (isObj(Gr.live)) ['reposeAngle', 'grainSize', 'grainContrast'].forEach((k) => { if (Gr.live[k] !== undefined && !setSlider(k, Gr.live[k])) skipped.push('granular.live.' + k); });
+      if (isObj(Gr.live)) ['reposeAngle', 'grainSize', 'grainContrast', 'windLift', 'windCarry', 'windBed'].forEach((k) => { if (Gr.live[k] !== undefined && !setSlider(k, Gr.live[k])) skipped.push('granular.live.' + k); });
       else skipped.push('granular.live');
     }
   } else if (Gr !== undefined) skipped.push('granular');
   else if (!patch) { const gd = GRANULARS[granularKey] || GRANULARS.sand; setSlider('reposeAngle', gd.repose); setSlider('grainSize', gd.grain); setSlider('grainContrast', gd.contrast); }
+  if (!patch) Object.keys(WIND_DEF).forEach((k) => { if (!(isObj(Gr) && isObj(Gr.live) && Gr.live[k] !== undefined)) setSlider(k, WIND_DEF[k]); });   // a pass-3a file has no wind keys: they load at their defaults, silently
   if (o.impact && isNum(o.impact.energy)) setSlider('size', o.impact.energy);
   if (Array.isArray(o.thickness)) [0, 1, 2, 3].forEach((i) => { if (o.thickness[i] !== undefined && !setSlider('th' + i, o.thickness[i])) skipped.push('thickness[' + i + ']'); });
   else if (o.thickness !== undefined) skipped.push('thickness');
@@ -3774,7 +4135,7 @@ window.XANADU = {
   get cracks() { return cdrops; },                                                                  // test hook: the planned crack clusters (polylines)
   settingsFile, applySettings, saveSettings,
   patchSettings(o, fname) { return applySettings(o, fname, true); },                              // Apply settings (a patch): only the keys present, a restart only if one needs it
-  step(n) { for (let i = 0; i < n; i++) substep(); },                                              // test hooks: n substeps (1/60 s each) ...
+  step(n, realtime) { if (!realtime) batch++; try { for (let i = 0; i < n; i++) substep(); } finally { if (!realtime) batch--; } },                                              // test hooks: n substeps (1/60 s each) ...
   fire(x, y) { manualQ.push({ ev: { t: stepCount * DT, x, y, energy: params.size }, scaled: false }); },   // ... and an impact at (x, y), as a tap
   readMask() {                       // test hook: the shown erosion depth, one float per texel (needs a 32-bit mask)
     const a = new Float32Array(fieldW * fieldH * 4);
@@ -3782,6 +4143,7 @@ window.XANADU = {
     if (f32) gl.readPixels(0, 0, fieldW, fieldH, gl.RGBA, gl.FLOAT, a);
     return { w: fieldW, h: fieldH, depth: Float32Array.from({ length: fieldW * fieldH }, (_, i) => a[i * 4 + 1]) };
   },
+  setBedDepth(z) { mask.t.forEach((t) => clearTarget(t, z, z, 0, 1)); },   // test hook: the whole bed eroded uniformly to depth z (target and shown), for the grain-boundary test
   readWave() {                       // test hook: the wave height field, one float per texel, simW x simH (needs the 32-bit wave state; zeros elsewhere)
     const a = new Float32Array(simW * simH * 4);
     gl.bindFramebuffer(gl.FRAMEBUFFER, state.cur.fbo);
@@ -3801,7 +4163,9 @@ window.XANADU = {
   get depFormat() { return dep ? (dep32 ? 'RGBA32F' : 'RGBA16F') : 'none'; },                      // test hooks: the formats the deposit and the erosion mask were made in
   get maskFormat() { return mask32 ? 'RGBA32F' : 'RGBA16F'; },
   get discsDropped() { return discsDropped; },
-  get reposeUntil() { return reposeUntil; },
+  get reposeInfo() { return { on: reposeOn, quiet: reposeQuiet, stopped: reposeStopped, busyAt: reposeBusyAt, pending: !!chkPending, ...reposeStat }; },   // test hook: the repose gate's state and counters
+  get winds() { return winds.slice(); },                                                              // test hook: the blows active now (D = this substep's four hop vectors, Dmax = at the gust's peak strength)
+  get windsCut() { return windsCut; },
   get depProg() { return progDep; },                                                                  // test hook: the deposit program (uniform / unit counts)
   GRAN, GRANULARS,
   get stepCount() { return stepCount; },                                                              // test hook: substeps run in this piece
@@ -3843,7 +4207,7 @@ try {
   { const sd = /[#?&]seed=([0-9]+)/.exec(location.href); if (sd) $('nSeed').value = sd[1];
     if (/[#?&]random=1/.test(location.href)) startRandom(seedVal()); }
   const m = /[#?&]seek=([0-9.]+)/.exec(location.href);
-  if (m) { const n = Math.round(parseFloat(m[1]) * 60); for (let i = 0; i < n; i++) substep(); }
+  if (m) { const n = Math.round(parseFloat(m[1]) * 60); batch++; for (let i = 0; i < n; i++) substep(); batch--; }
   requestAnimationFrame((t) => { last = t; requestAnimationFrame(frame); });
 } catch (err) { fail(String(err && err.message || err)); }
 })();
