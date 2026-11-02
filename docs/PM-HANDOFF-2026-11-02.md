@@ -116,6 +116,14 @@ Three streams. (1) **MJDL / Perception Cloud**: the interactive reference tool *
 | MJDL package | `MJDL-package-2026-10-30.zip` (with Bekir) — `tool/xan-partition-view.html` v28, `tool/phobia-engine.js` 0.2, `tool/phobia-lab.html` v8, `tool/phobia-phase-lab.html` (parked), `phase-model-plan.html`, `docs/MJDL-cloud-configuration.md` 0.14+, `MJDL-PM-brief.md` (change log to 31 Oct 09:00), `MJDL-phobia-table.md` 0.7, procedure/definitions/transition notes, README | **not in git** |
 | Nodular composition plan | in the package docs (written 30 Oct, no code) | plan only |
 
+### 5.0 What the PM must request from Bekir (not in the repo)
+
+| Request | How to recognise the right copy |
+|---|---|
+| **`MJDL-package-2026-10-30.zip`** — the only MJDL package; it was re-packed under the **same name** many times on 30–31 Oct. Ask for the **last** copy: the one delivered 31 Oct 2026 ~09:00 CET with the caption "Kapanış paketi" (closing package). | Its `README.md` lists `xan-partition-view.html` **v28**, `phobia-engine.js` **0.2**, `phobia-lab.html` **v8** "(the accepted point)", `phobia-phase-lab.html` "(parked, not applied)", `MJDL-phobia-table.md` **0.7**; `docs/MJDL-PM-brief.md` ends "Last updated: 31 Oct 2026, 09:00 CET". An older copy shows lower numbers — ask again. |
+| If the zip is lost: the files were also sent singly in the 29–30 Oct session — `xan-partition-view.html`, `MJDL-cloud-configuration.md`, `MJDL-PM-brief.md`, `MJDL-phobia-table.md` — and the tools are published as claude.ai artifacts named **"Phobia Lab"** and the Partition View (owner: Bekir). | Single files are older than the zip (v19–v22 era for the Partition View); only the zip holds v28 and the engine. |
+| **Nothing to request for Xanadu Sound or the Pärt clip** — everything is in `bektaron/MJDL`. | `git log` HEAD `0a5b62e` or later. |
+
 ### 5.1 File-by-file, latest version known to the advisor
 
 Versions marked [☀️] were read from the repo today; [🌤️] are taken from the session transcripts (the package itself is not reachable from here — the PM verifies against the zip's `README.md` and `docs/MJDL-PM-brief.md`, whose change log is authoritative).
