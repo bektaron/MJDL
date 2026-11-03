@@ -1,6 +1,6 @@
 # HANDOFF — Xanadu Sound / Pärt clip prototype
 
-For the next chat. Written 1 Nov 2026 by the advisor at the end of a two-day session (31 Oct–1 Nov). Read this first; then PLAN-v2.md, IMPACTS.md, and `docs/XANADU-SOUND-project.md` §10–11.
+For the next chat. Written 1 Nov 2026 by the advisor at the end of a two-day session (31 Oct–1 Nov). Read this first; then PLAN-v2.md, IMPACTS.md, and `docs/XANADU-SOUND-project.md` §10–11. Project-level handover (done / to do, one screen each): `../HANDOVER-2026-11-03.md`.
 
 ## How to start the next chat
 
